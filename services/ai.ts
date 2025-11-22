@@ -2,12 +2,23 @@ import { GoogleGenAI } from "@google/genai";
 import { InteractionLog, LeadStatus } from "../types";
 import { getCompanyKnowledgeSync } from "./storage";
 
-// Initialize Gemini
-// Assuming process.env.API_KEY is injected by the environment
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Initialize Gemini Lazily
+// This prevents the app from crashing immediately if the key is missing
+let ai: GoogleGenAI | null = null;
+
+const getAI = () => {
+  if (!ai) {
+    const apiKey = process.env.API_KEY;
+    if (apiKey && apiKey.length > 0) {
+      ai = new GoogleGenAI({ apiKey });
+    } else {
+      console.warn("Google Gemini API Key is missing or invalid. AI features will be disabled.");
+    }
+  }
+  return ai;
+};
 
 const getSystemContext = () => {
-  // Fix: Use synchronous getter to access properties directly, avoiding Promise<CompanyKnowledge> errors
   const k = getCompanyKnowledgeSync();
   const hasMasterDoc = k.masterDocumentText && k.masterDocumentText.length > 10;
   
@@ -36,9 +47,11 @@ const getSystemContext = () => {
 
 export const refineNotes = async (text: string): Promise<string> => {
   if (!text || text.length < 3) return text;
+  const client = getAI();
+  if (!client) return text;
   
   try {
-    const response = await ai.models.generateContent({
+    const response = await client.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: `${getSystemContext()}
       
@@ -63,6 +76,8 @@ export const generateLeadInsights = async (logs: InteractionLog[]): Promise<AIIn
    if (!logs || logs.length === 0) {
      return { summary: "No history available for analysis.", sentiment: "Unknown", nextStep: "Start conversation." };
    }
+   const client = getAI();
+   if (!client) return { summary: "AI configuration missing.", sentiment: "Unknown", nextStep: "Check API Key." };
 
    try {
     // Sort logs oldest to newest for chronological context
@@ -72,7 +87,7 @@ export const generateLeadInsights = async (logs: InteractionLog[]): Promise<AIIn
       `Date: ${h.followUpDate} | Status: ${h.leadStatus} | Note: ${h.description}`
     ).join('\n');
     
-    const response = await ai.models.generateContent({
+    const response = await client.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: `${getSystemContext()}
         
@@ -107,6 +122,9 @@ export const generateMessageDraft = async (
   lastNote: string,
   type: 'SMS' | 'Email'
 ): Promise<string> => {
+  const client = getAI();
+  if (!client) return "AI features disabled.";
+
   try {
     const prompt = `${getSystemContext()}
     
@@ -122,7 +140,7 @@ export const generateMessageDraft = async (
     - If Email: Subject line included. Concise body.
     - No placeholders.`;
 
-    const response = await ai.models.generateContent({
+    const response = await client.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: prompt
     });
@@ -138,6 +156,13 @@ export const generateDailyBriefing = async (
   todaysCount: number,
   missedCount: number
 ): Promise<string> => {
+  const client = getAI();
+  // Fix: Use synchronous getter
+  const k = getCompanyKnowledgeSync();
+  const fallback = `Welcome back, ${agentName}. You have ${todaysCount} tasks today. Go sell some ${k.productName}!`;
+
+  if (!client) return fallback;
+
   try {
     const prompt = `${getSystemContext()}
     
@@ -154,15 +179,14 @@ export const generateDailyBriefing = async (
     
     Tone: Professional, motivating.`;
 
-    const response = await ai.models.generateContent({
+    const response = await client.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: prompt
     });
-    // Fix: Use synchronous getter
-    const k = getCompanyKnowledgeSync();
-    return response.text?.trim() || `Welcome back, ${agentName}. You have ${todaysCount} tasks today. Go sell some ${k.productName}!`;
+    
+    return response.text?.trim() || fallback;
   } catch (error) {
-    return `Welcome back, ${agentName}. You have ${todaysCount} tasks on your schedule today.`;
+    return fallback;
   }
 };
 
@@ -174,9 +198,12 @@ export interface WinProbabilty {
 }
 
 export const analyzeWinProbability = async (logs: InteractionLog[]): Promise<WinProbabilty> => {
+  const client = getAI();
+  if (!client) return { score: 50, reason: "AI Not Configured" };
+
   try {
     const historyText = logs.map(h => `Status: ${h.leadStatus}, Note: ${h.description}`).join('\n');
-    const response = await ai.models.generateContent({
+    const response = await client.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: `${getSystemContext()}
       
@@ -194,8 +221,11 @@ export const analyzeWinProbability = async (logs: InteractionLog[]): Promise<Win
 };
 
 export const generateObjectionHandler = async (objectionType: string, context: string): Promise<string> => {
+  const client = getAI();
+  if (!client) return "AI Not Configured";
+
   try {
-    const response = await ai.models.generateContent({
+    const response = await client.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: `${getSystemContext()}
       
