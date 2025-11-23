@@ -1,3 +1,4 @@
+
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -67,7 +68,7 @@ export const loginUser = async (email: string, password: string): Promise<User> 
       }
       return { ...userData, uid: firebaseUser.uid };
     } else {
-      throw new Error("User profile not found.");
+      throw new Error("User profile not found in database.");
     }
   } catch (error: any) {
     console.error("Login error", error);
@@ -81,7 +82,7 @@ export const registerUser = async (email: string, password: string): Promise<Use
   const userDoc = await getDoc(userDocRef);
   
   if (!userDoc.exists()) {
-    throw new Error("This email is not authorized. Ask your Admin to add you to the Team first.");
+    throw new Error(`The email "${email}" is not authorized. Please ask the Admin to add you to the Team first, or use the 'Initialize Admin' button if you are the owner.`);
   }
 
   // 2. Create Auth Account
@@ -93,6 +94,9 @@ export const registerUser = async (email: string, password: string): Promise<Use
     
     return { ...(userDoc.data() as User), uid: userCredential.user.uid };
   } catch (error: any) {
+    if (error.code === 'auth/email-already-in-use') {
+        throw new Error("Account already exists. Please switch to the 'Login' tab.");
+    }
     throw new Error(error.message);
   }
 };
@@ -270,24 +274,29 @@ export const saveCompanyKnowledge = async (data: CompanyKnowledge) => {
   cachedKnowledge = data;
 };
 
-// --- SEEDING ---
-// This is now only used to Create the FIRST Admin account if the DB is empty
-export const seedData = async () => {
-  // Check if any user exists
-  const q = query(collection(db, USERS_COLLECTION));
-  const snapshot = await getDocs(q);
-  
-  if (snapshot.empty) {
-    console.log("Seeding Master Admin...");
+// --- SEEDING / RECOVERY ---
+
+export const ensureMasterAdmin = async (): Promise<string> => {
+  try {
     const adminEmail = 'admin@followup.com';
-    await setDoc(doc(db, USERS_COLLECTION, adminEmail), {
-      uid: 'master_admin_placeholder', // Will be updated on first register
+    const userRef = doc(db, USERS_COLLECTION, adminEmail);
+    const snap = await getDoc(userRef);
+
+    if (snap.exists()) {
+      return `Admin doc for ${adminEmail} already exists. You can register now.`;
+    }
+
+    await setDoc(userRef, {
+      uid: 'master_admin_placeholder', 
       name: 'Master Admin',
       email: adminEmail,
       role: Role.ADMIN,
       photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=admin',
       password: 'placeholder'
     });
-    alert(`Master Admin authorized: ${adminEmail}. Please Register with this email to set your password.`);
+    return `Success! Authorized: ${adminEmail}. Go to "First Time Setup" to create your password.`;
+  } catch (error: any) {
+    console.error(error);
+    throw new Error(`DB Error: ${error.message}. Check your Firebase Console rules.`);
   }
 };

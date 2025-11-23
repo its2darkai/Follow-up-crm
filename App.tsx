@@ -5,7 +5,7 @@ import {
   Clock, Briefcase, User as UserIcon, Filter, X, Trash2, Trophy, TrendingUp, Crown, BarChart3,
   AlertTriangle, FileWarning, ClipboardList, Settings, Camera, Pencil, Info, Shield, UserPlus,
   Percent, Activity, Sparkles, Bot, Medal, MessageSquare, Mail, Copy, Columns, List, Gauge,
-  Zap, Sword, BrainCircuit, BookOpen, Save
+  Zap, Sword, BrainCircuit, BookOpen, Save, RefreshCw
 } from 'lucide-react';
 import { format, isToday, isBefore, differenceInDays, isSameDay, isSameMonth, isSameWeek } from 'date-fns';
 // @ts-ignore
@@ -14,8 +14,8 @@ import confetti from 'canvas-confetti';
 import { User, Role, InteractionLog, LeadStatus, CallType, CompanyKnowledge } from './types';
 import { 
   loginUser, registerUser, logoutUser, getCurrentUser, getLogs, checkPhoneExists, saveLog, 
-  seedData, updateLogStatus, deleteLog, getAllUsers, updateUserProfile, updateLog, 
-  createUser, deleteUser, adminUpdateUser, getCompanyKnowledge, saveCompanyKnowledge
+  updateLogStatus, deleteLog, getAllUsers, updateUserProfile, updateLog, 
+  createUser, deleteUser, adminUpdateUser, getCompanyKnowledge, saveCompanyKnowledge, ensureMasterAdmin
 } from './services/storage';
 import { refineNotes, generateLeadInsights, AIInsights, generateDailyBriefing, generateMessageDraft, analyzeWinProbability, WinProbabilty, generateObjectionHandler } from './services/ai';
 import { Card3D, Button3D, Input3D, Select3D } from './components/UI';
@@ -143,6 +143,20 @@ const AuthScreen: React.FC<{ onLogin: (u: User) => void }> = ({ onLogin }) => {
     }
   };
 
+  const handleAdminReset = async () => {
+    try {
+        setLoading(true);
+        const msg = await ensureMasterAdmin();
+        alert(msg);
+        setEmail('admin@followup.com');
+        setIsLogin(false); // Switch to register
+    } catch (e: any) {
+        alert(e.message);
+    } finally {
+        setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6 relative overflow-hidden">
       <div className="w-full max-w-md relative z-10">
@@ -177,6 +191,10 @@ const AuthScreen: React.FC<{ onLogin: (u: User) => void }> = ({ onLogin }) => {
             {!isLogin && (
                <div className="mb-4 p-3 bg-indigo-50 text-indigo-700 text-xs rounded-lg font-medium">
                  Note: Your email must be authorized by an Admin before you can register.
+                 <br/><br/>
+                 <button type="button" onClick={handleAdminReset} className="underline font-bold hover:text-indigo-900">
+                    Are you the Admin? Click here to Initialize.
+                 </button>
                </div>
             )}
 
@@ -239,7 +257,7 @@ export default function FollowUpApp() {
 
   // Initialize
   useEffect(() => {
-    seedData();
+    // Only try to auto-login from cache, do NOT auto-seed silently anymore
     const current = getCurrentUser();
     if (current) setUser(current);
   }, []);
