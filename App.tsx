@@ -869,14 +869,29 @@ export default function FollowUpApp() {
                       </div>
                    </Card3D>
                    
-                   <div className="grid grid-rows-2 gap-4">
-                      <Card3D className="bg-emerald-50 border-emerald-200">
-                         <p className="text-xs font-bold text-emerald-600 uppercase">Revenue (Est)</p>
-                         <p className="text-4xl font-black text-emerald-800">${logs.filter(l => l.leadStatus === LeadStatus.PAID).length * 100}</p>
+                   <div className="grid grid-rows-2 grid-cols-2 gap-4">
+                      {/* REAL METRICS NOW */}
+                      <Card3D className="bg-emerald-50 border-emerald-200 p-3 flex flex-col justify-center">
+                         <p className="text-xs font-bold text-emerald-600 uppercase">Conversion Rate</p>
+                         <p className="text-2xl font-black text-emerald-800">
+                           {logs.length > 0 ? Math.round((logs.filter(l => l.leadStatus === LeadStatus.PAID).length / logs.length) * 100) : 0}%
+                         </p>
                       </Card3D>
-                      <Card3D className="bg-indigo-50 border-indigo-200">
-                         <p className="text-xs font-bold text-indigo-600 uppercase">Activity Score</p>
-                         <p className="text-4xl font-black text-indigo-800">{logs.length * 2 + logs.filter(l => l.isCompleted).length * 5}</p>
+                      <Card3D className="bg-indigo-50 border-indigo-200 p-3 flex flex-col justify-center">
+                         <p className="text-xs font-bold text-indigo-600 uppercase">Pipeline Vol</p>
+                         <p className="text-2xl font-black text-indigo-800">
+                           {logs.filter(l => [LeadStatus.NEW_PROSPECT, LeadStatus.FOLLOW_UP, LeadStatus.SECOND_VOICE].includes(l.leadStatus)).length}
+                         </p>
+                      </Card3D>
+                      <Card3D className="bg-rose-50 border-rose-200 p-3 flex flex-col justify-center">
+                         <p className="text-xs font-bold text-rose-600 uppercase">Lost Opp.</p>
+                         <p className="text-2xl font-black text-rose-800">
+                           {logs.length > 0 ? Math.round((logs.filter(l => l.leadStatus === LeadStatus.NOT_INTERESTED).length / logs.length) * 100) : 0}%
+                         </p>
+                      </Card3D>
+                       <Card3D className="bg-amber-50 border-amber-200 p-3 flex flex-col justify-center">
+                         <p className="text-xs font-bold text-amber-600 uppercase">Missed Tasks</p>
+                         <p className="text-2xl font-black text-amber-800">{missedLeads.length}</p>
                       </Card3D>
                    </div>
                 </div>

@@ -333,7 +333,7 @@ export const getMarketIntel = async (): Promise<MarketIntel> => {
   if (!client) return { today: ["AI Config Missing"], thisWeek: [], thisMonth: [], predictions: [] };
 
   try {
-    // We use Google Search Grounding to get REAL data
+    // We REMOVE responseMimeType: "application/json" because it conflicts with googleSearch tool
     const response = await client.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: `
@@ -346,7 +346,7 @@ export const getMarketIntel = async (): Promise<MarketIntel> => {
       3. This Month's Major Moves
       4. Predictions for next 3-12 months (Sectors with momentum)
       
-      Return strictly as JSON:
+      Return strictly as VALID JSON string (do not use markdown blocks):
       {
         "today": ["headline 1", "headline 2", ...],
         "thisWeek": [...],
@@ -354,17 +354,21 @@ export const getMarketIntel = async (): Promise<MarketIntel> => {
         "predictions": [...]
       }`,
       config: { 
-        responseMimeType: "application/json",
         tools: [{ googleSearch: {} }]
       }
     });
     
-    return JSON.parse(response.text || '{}');
+    // Manual JSON cleanup because we disabled json mode
+    let text = response.text || "{}";
+    // Remove markdown code blocks if present
+    text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+    
+    return JSON.parse(text);
   } catch (e) {
     console.error("Market Intel Error", e);
     return { 
       today: ["Could not fetch live market data."], 
-      thisWeek: ["Check internet connection."], 
+      thisWeek: ["Try again later."], 
       thisMonth: [], 
       predictions: [] 
     };
