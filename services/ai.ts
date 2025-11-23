@@ -240,3 +240,95 @@ export const generateObjectionHandler = async (objectionType: string, context: s
     return "Network error. Please try again.";
   }
 };
+
+// --- SALES COPILOT CHAT ---
+
+export const chatWithSalesAssistant = async (message: string): Promise<string> => {
+  const client = getAI();
+  if (!client) return "AI Not Configured. Please ask Admin to add API Key.";
+
+  try {
+    const response = await client.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: `${getSystemContext()}
+      
+      User Query: "${message}"
+      
+      Task: Act as a helpful, knowledgeable Sales Assistant.
+      - If the user asks a question about the product, answer using the Source Material.
+      - If the user pastes a client message (e.g., from WhatsApp), draft a perfect reply to close the sale.
+      - Be concise, professional, and high-energy.`
+    });
+    return response.text?.trim() || "I didn't catch that. Could you rephrase?";
+  } catch (e) {
+    console.error("Chat Error", e);
+    return "Sorry, I'm having trouble connecting to the brain right now.";
+  }
+};
+
+// --- CALL STRATEGY & NO ANSWER HANDLING ---
+
+export interface CallStrategy {
+  situationSummary: string;
+  talkingPoints: string[];
+  psychologicalVibe: string;
+}
+
+export const generateCallStrategy = async (logs: InteractionLog[]): Promise<CallStrategy> => {
+  const client = getAI();
+  if (!client || logs.length === 0) return { situationSummary: "No history.", talkingPoints: ["Ask about needs."], psychologicalVibe: "Unknown" };
+
+  try {
+    const historyText = logs.map(h => `[${h.followUpDate}] ${h.leadStatus}: ${h.description}`).join('\n');
+    const response = await client.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: `${getSystemContext()}
+      
+      Task: Analyze this client's history.
+      Return JSON:
+      {
+        "situationSummary": "1 sentence recap of where we left off.",
+        "talkingPoints": ["Question 1", "Question 2", "Value Prop 3"],
+        "psychologicalVibe": "E.g., Hesitant, Price-Shopper, Busy, Excited"
+      }
+      
+      Client History:
+      ${historyText}`,
+      config: { responseMimeType: "application/json" }
+    });
+    return JSON.parse(response.text || '{}');
+  } catch (e) {
+    return { situationSummary: "Error analyzing.", talkingPoints: [], psychologicalVibe: "Unknown" };
+  }
+};
+
+export const generateNoAnswerMessage = async (
+  clientName: string, 
+  logs: InteractionLog[], 
+  agentIntent?: string
+): Promise<string> => {
+  const client = getAI();
+  if (!client) return "AI Unavailable";
+
+  try {
+    const historyText = logs.map(h => `[${h.followUpDate}] ${h.leadStatus}: ${h.description}`).join('\n');
+    const response = await client.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: `${getSystemContext()}
+      
+      Task: The client (${clientName}) did NOT pick up the phone.
+      Analyze the history to guess why (Are they ghosting? Busy? Price shock?).
+      Draft a friendly, low-pressure WhatsApp message to re-engage them.
+      
+      Client History:
+      ${historyText}
+      
+      ${agentIntent ? `IMPORTANT - The agent specifically wants to say: "${agentIntent}". Incorporate this naturally.` : ''}
+      
+      Constraint: Keep it under 25 words. Casual WhatsApp style.`
+    });
+    return response.text?.trim() || `Hey ${clientName}, missed you! Call me back when free?`;
+  } catch (e) {
+    return `Hey ${clientName}, missed you! Call me back when free?`;
+  }
+};

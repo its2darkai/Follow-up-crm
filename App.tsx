@@ -1,11 +1,11 @@
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   LayoutDashboard, Users, Search, PlusCircle, LogOut, Phone, Megaphone, Calendar, CheckCircle2,
   Clock, Briefcase, User as UserIcon, Filter, X, Trash2, Trophy, TrendingUp, Crown, BarChart3,
   AlertTriangle, FileWarning, ClipboardList, Settings, Camera, Pencil, Info, Shield, UserPlus,
   Percent, Activity, Sparkles, Bot, Medal, MessageSquare, Mail, Copy, Columns, List, Gauge,
-  Zap, Sword, BrainCircuit, BookOpen, Save, RefreshCw, HelpCircle, LockKeyhole
+  Zap, Sword, BrainCircuit, BookOpen, Save, RefreshCw, HelpCircle, LockKeyhole, Send, Minimize2, PhoneMissed
 } from 'lucide-react';
 import { format, isToday, isBefore, differenceInDays, isSameDay, isSameMonth, isSameWeek } from 'date-fns';
 // @ts-ignore
@@ -17,7 +17,7 @@ import {
   updateLogStatus, deleteLog, getAllUsers, updateUserProfile, updateLog, 
   createUser, deleteUser, adminUpdateUser, getCompanyKnowledge, saveCompanyKnowledge, ensureMasterAdmin, resetUserPassword, registerNewAdmin
 } from './services/storage';
-import { refineNotes, generateLeadInsights, AIInsights, generateDailyBriefing, generateMessageDraft, analyzeWinProbability, WinProbabilty, generateObjectionHandler } from './services/ai';
+import { refineNotes, generateLeadInsights, AIInsights, generateDailyBriefing, generateMessageDraft, analyzeWinProbability, WinProbabilty, generateObjectionHandler, chatWithSalesAssistant, generateCallStrategy, CallStrategy, generateNoAnswerMessage } from './services/ai';
 import { Card3D, Button3D, Input3D, Select3D } from './components/UI';
 
 // --- POLYFILLS ---
@@ -34,6 +34,104 @@ const startOfToday = () => {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
   return d;
+};
+
+// --- SALES COPILOT WIDGET ---
+const SalesCopilot: React.FC = () => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [messages, setMessages] = useState<{role: 'user'|'ai', text: string}[]>([
+    { role: 'ai', text: "Hi! I'm your Sales Assistant. Ask me about the product or paste a client's WhatsApp message to get a reply!" }
+  ]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(scrollToBottom, [messages]);
+
+  const handleSend = async () => {
+    if (!input.trim()) return;
+    
+    const userMsg = input;
+    setInput('');
+    setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
+    setLoading(true);
+
+    const aiResponse = await chatWithSalesAssistant(userMsg);
+    
+    setMessages(prev => [...prev, { role: 'ai', text: aiResponse }]);
+    setLoading(false);
+  };
+
+  return (
+    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
+      {isOpen ? (
+        <div className="w-80 md:w-96 bg-white border-2 border-slate-900 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.2)] overflow-hidden flex flex-col h-[500px] animate-in slide-in-from-bottom-10 duration-300">
+           {/* Header */}
+           <div className="bg-slate-900 text-white p-4 flex justify-between items-center shrink-0">
+              <div className="flex items-center gap-2">
+                 <Sparkles className="text-amber-400" size={20} />
+                 <h3 className="font-bold">Sales Copilot</h3>
+              </div>
+              <button onClick={() => setIsOpen(false)} className="hover:bg-slate-800 p-1 rounded"><Minimize2 size={18}/></button>
+           </div>
+           
+           {/* Chat Area */}
+           <div className="flex-1 overflow-y-auto p-4 bg-slate-50 space-y-4">
+              {messages.map((m, i) => (
+                <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                   <div className={`max-w-[85%] p-3 rounded-xl text-sm font-medium ${m.role === 'user' ? 'bg-indigo-600 text-white rounded-br-none' : 'bg-white border border-slate-200 text-slate-800 rounded-bl-none shadow-sm'}`}>
+                      {m.text}
+                   </div>
+                </div>
+              ))}
+              {loading && (
+                 <div className="flex justify-start">
+                   <div className="bg-white border border-slate-200 p-3 rounded-xl rounded-bl-none shadow-sm">
+                     <div className="flex gap-1">
+                       <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{animationDelay: '0s'}}></div>
+                       <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+                       <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                     </div>
+                   </div>
+                 </div>
+              )}
+              <div ref={messagesEndRef} />
+           </div>
+
+           {/* Input Area */}
+           <div className="p-3 bg-white border-t border-slate-200 shrink-0 flex gap-2">
+              <input 
+                type="text" 
+                className="flex-1 bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                placeholder="Ask query or paste msg..."
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSend()}
+              />
+              <button 
+                onClick={handleSend} 
+                disabled={loading || !input.trim()}
+                className="bg-indigo-600 text-white p-2 rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+              >
+                <Send size={18} />
+              </button>
+           </div>
+        </div>
+      ) : (
+        <button 
+          onClick={() => setIsOpen(true)}
+          className="w-14 h-14 bg-indigo-600 text-white rounded-full shadow-lg flex items-center justify-center hover:scale-110 transition-transform border-2 border-white"
+        >
+           <Bot size={28} />
+           <span className="absolute top-0 right-0 w-4 h-4 bg-amber-400 rounded-full border-2 border-indigo-600"></span>
+        </button>
+      )}
+    </div>
+  );
 };
 
 // --- LEADERBOARD SCREEN ---
@@ -277,6 +375,154 @@ const AuthScreen: React.FC<{ onLogin: (u: User) => void }> = ({ onLogin }) => {
   );
 };
 
+// --- LEAD DETAILS COMPONENT ---
+const LeadDetailsModal: React.FC<{ lead: InteractionLog, logs: InteractionLog[], onClose: () => void, onUpdate: (id: string, updates: any) => Promise<void> }> = ({ lead, logs, onClose, onUpdate }) => {
+  const [callStrategy, setCallStrategy] = useState<CallStrategy | null>(null);
+  const [loadingStrategy, setLoadingStrategy] = useState(false);
+  
+  // No Answer Logic
+  const [showNoAnswerUI, setShowNoAnswerUI] = useState(false);
+  const [noAnswerMsg, setNoAnswerMsg] = useState('');
+  const [regenIntent, setRegenIntent] = useState('');
+  const [generatingDraft, setGeneratingDraft] = useState(false);
+
+  // Load Strategy on Mount
+  useEffect(() => {
+    const load = async () => {
+      setLoadingStrategy(true);
+      const s = await generateCallStrategy(logs.filter(l => l.phone === lead.phone));
+      setCallStrategy(s);
+      setLoadingStrategy(false);
+    };
+    load();
+  }, [lead, logs]);
+
+  const handleGenerateNoAnswer = async () => {
+    setGeneratingDraft(true);
+    setShowNoAnswerUI(true);
+    const msg = await generateNoAnswerMessage(lead.clientName, logs.filter(l => l.phone === lead.phone), regenIntent);
+    setNoAnswerMsg(msg);
+    setGeneratingDraft(false);
+    setRegenIntent('');
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-6" onClick={onClose}>
+      <Card3D className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-b-none sm:rounded-2xl animate-in slide-in-from-bottom-10 duration-300" onClick={(e) => e.stopPropagation()} noPadding>
+          <div className="bg-slate-900 text-white p-6 sticky top-0 z-10 flex justify-between items-start">
+            <div>
+                <h2 className="text-2xl font-black">{lead.clientName}</h2>
+                <p className="text-slate-400 flex items-center gap-2"><Phone size={14}/> {lead.phone} <span className="w-1 h-1 rounded-full bg-slate-600"></span> {lead.leadStatus}</p>
+            </div>
+            <button onClick={onClose} className="p-1 bg-slate-800 rounded hover:bg-slate-700"><X/></button>
+          </div>
+
+          <div className="p-6 space-y-6">
+            {/* CALL PREP STRATEGY */}
+            <div className="bg-gradient-to-br from-indigo-50 to-white border-2 border-indigo-100 rounded-xl p-5 relative overflow-hidden shadow-sm">
+                <div className="absolute top-0 right-0 p-3 opacity-5"><BrainCircuit size={80} className="text-indigo-900"/></div>
+                <div className="relative z-10">
+                  <h3 className="font-black text-indigo-900 mb-3 flex items-center gap-2"><Sparkles size={18}/> Call Strategy Prep</h3>
+                  
+                  {loadingStrategy ? (
+                      <div className="animate-pulse space-y-2">
+                        <div className="h-4 bg-indigo-200 rounded w-3/4"></div>
+                        <div className="h-4 bg-indigo-200 rounded w-1/2"></div>
+                      </div>
+                  ) : callStrategy ? (
+                      <div className="space-y-4">
+                        <div className="bg-white/80 p-3 rounded-lg border border-indigo-50">
+                            <p className="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-1">Situation Recap</p>
+                            <p className="text-slate-800 font-medium text-sm">{callStrategy.situationSummary}</p>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="bg-white/80 p-3 rounded-lg border border-indigo-50">
+                              <p className="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-1">Talking Points</p>
+                              <ul className="list-disc ml-4 text-sm text-slate-700 space-y-1">
+                                  {callStrategy.talkingPoints.map((tp, i) => <li key={i}>{tp}</li>)}
+                              </ul>
+                            </div>
+                            <div className="bg-white/80 p-3 rounded-lg border border-indigo-50">
+                              <p className="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-1">Psychological Vibe</p>
+                              <p className="text-slate-800 font-bold text-lg">{callStrategy.psychologicalVibe}</p>
+                            </div>
+                        </div>
+                      </div>
+                  ) : <p>Strategy unavailable.</p>}
+                </div>
+            </div>
+
+            {/* HISTORY TIMELINE */}
+            <div>
+                <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2"><List size={18}/> Interaction History</h3>
+                <div className="space-y-0 relative border-l-2 border-slate-200 ml-3 pl-6 pb-2 max-h-40 overflow-y-auto custom-scrollbar">
+                  {logs.filter(l => l.phone === lead.phone).sort((a,b) => b.createdAt - a.createdAt).map((log, idx) => (
+                      <div key={log.id} className="mb-6 relative">
+                        <div className={`absolute -left-[31px] top-0 w-4 h-4 rounded-full border-2 border-white shadow-sm ${idx===0 ? 'bg-indigo-600' : 'bg-slate-300'}`}></div>
+                        <div className="bg-white border border-slate-200 p-4 rounded-xl shadow-sm">
+                            <div className="flex justify-between items-start mb-2">
+                              <span className="font-bold text-sm bg-slate-100 px-2 py-1 rounded text-slate-600">{log.leadStatus}</span>
+                              <span className="text-xs text-slate-400 font-medium">{log.followUpDate}</span>
+                            </div>
+                            <p className="text-slate-700 text-sm leading-relaxed">{log.description}</p>
+                            <p className="text-xs text-slate-400 mt-2 font-bold uppercase tracking-wider">{log.agentName}</p>
+                        </div>
+                      </div>
+                  ))}
+                </div>
+            </div>
+
+            {/* NO ANSWER / ACTIONS */}
+            <div className="border-t-2 border-slate-100 pt-6">
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                    <Button3D variant="success" icon={CheckCircle2} onClick={() => { onUpdate(lead.id, { leadStatus: LeadStatus.PAID, isCompleted: true }); onClose(); confetti(); }}>Mark PAID</Button3D>
+                    <Button3D variant="danger" icon={X} onClick={() => { onUpdate(lead.id, { leadStatus: LeadStatus.NOT_INTERESTED, isCompleted: true }); onClose(); }}>Not Interested</Button3D>
+                    <Button3D variant="secondary" icon={Megaphone} onClick={() => { onUpdate(lead.id, { leadStatus: LeadStatus.SECOND_VOICE, secondVoiceRequested: true }); onClose(); }}>Request 2nd Voice</Button3D>
+                    <Button3D variant="secondary" icon={PhoneMissed} onClick={handleGenerateNoAnswer}>Client didn't pick up?</Button3D>
+                </div>
+
+                {showNoAnswerUI && (
+                  <div className="bg-amber-50 border-2 border-amber-200 rounded-xl p-4 animate-in fade-in zoom-in-95 duration-200">
+                      <h4 className="font-bold text-amber-800 mb-2 flex items-center gap-2"><MessageSquare size={16}/> No Answer Strategy</h4>
+                      
+                      {generatingDraft ? (
+                         <div className="p-4 text-center text-amber-600 font-bold animate-pulse">Analyzing history & drafting message...</div>
+                      ) : (
+                         <>
+                           <textarea 
+                              className="w-full p-3 rounded-lg border-2 border-amber-200 bg-white text-sm mb-3 focus:outline-none focus:border-amber-400"
+                              rows={3}
+                              value={noAnswerMsg}
+                              onChange={(e) => setNoAnswerMsg(e.target.value)}
+                           />
+                           <div className="flex gap-2 mb-4">
+                              <Button3D variant="primary" className="flex-1 py-2 text-sm" icon={Copy} onClick={() => { navigator.clipboard.writeText(noAnswerMsg); alert("Copied to clipboard!"); }}>Copy Message</Button3D>
+                           </div>
+
+                           <div className="flex gap-2 items-center border-t border-amber-200 pt-3">
+                              <input 
+                                type="text" 
+                                placeholder="E.g. Offer 10% discount..." 
+                                className="flex-1 bg-white border border-amber-200 rounded-lg px-3 py-2 text-sm"
+                                value={regenIntent}
+                                onChange={(e) => setRegenIntent(e.target.value)}
+                              />
+                              <button onClick={handleGenerateNoAnswer} className="text-xs font-bold bg-amber-200 text-amber-800 px-3 py-2 rounded-lg hover:bg-amber-300">
+                                Regenerate
+                              </button>
+                           </div>
+                         </>
+                      )}
+                  </div>
+                )}
+            </div>
+          </div>
+      </Card3D>
+    </div>
+  );
+};
+
+
 // --- MAIN APP ---
 export default function FollowUpApp() {
   const [user, setUser] = useState<User | null>(null);
@@ -421,6 +667,11 @@ export default function FollowUpApp() {
   useEffect(() => {
       if (knowledgeModalOpen) loadKnowledge();
   }, [knowledgeModalOpen]);
+
+  const handleUpdateLogWrapper = async (id: string, updates: any) => {
+    await updateLogStatus(id, updates);
+    fetchLogs();
+  };
 
   // View Rendering
   if (!user) return <AuthScreen onLogin={setUser} />;
@@ -574,6 +825,9 @@ export default function FollowUpApp() {
              </div>
           )}
        </main>
+       
+       {/* FLOATING SALES COPILOT */}
+       <SalesCopilot />
 
        {/* MODALS */}
        
@@ -627,4 +881,108 @@ export default function FollowUpApp() {
                 </div>
                 <Select3D label="Role" options={[{label:'Agent', value:Role.AGENT}, {label:'Admin', value:Role.ADMIN}]} value={newMemberRole} onChange={e => setNewMemberRole(e.target.value as any)} />
                 <div className="flex gap-2">
-                   <Button3D onClick={handleAddOrUpdateUser
+                   <Button3D onClick={handleAddOrUpdateUser} className="flex-1">{editingTeamUser ? 'Update User' : 'Add Member'}</Button3D>
+                   {editingTeamUser && <Button3D variant="ghost" onClick={() => { setEditingTeamUser(null); setNewMemberEmail(''); setNewMemberName(''); }}>Cancel</Button3D>}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                 <h3 className="font-bold text-sm text-slate-500 uppercase mb-2">Team Roster ({teamMembers.length})</h3>
+                 {teamMembers.map(m => (
+                    <div key={m.email} className="flex justify-between items-center p-3 bg-white border-2 border-slate-100 rounded-xl">
+                       <div className="flex items-center gap-3">
+                          <img src={m.photoURL} className="w-8 h-8 rounded-full bg-slate-100" />
+                          <div>
+                             <p className="font-bold text-sm">{m.name}</p>
+                             <p className="text-xs text-slate-400">{m.email} • {m.role}</p>
+                          </div>
+                       </div>
+                       <div className="flex gap-2">
+                          <button onClick={() => { setEditingTeamUser(m.uid); setNewMemberEmail(m.email); setNewMemberName(m.name); setNewMemberRole(m.role); }} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 rounded"><Pencil size={16}/></button>
+                          {m.email !== user.email && (
+                             <button onClick={async () => { if(confirm(`Remove ${m.name}?`)) { await deleteUser(m.uid); loadTeam(); } }} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded"><Trash2 size={16}/></button>
+                          )}
+                       </div>
+                    </div>
+                 ))}
+              </div>
+           </Card3D>
+         </div>
+       )}
+
+       {/* 3. KNOWLEDGE BASE (ADMIN) */}
+       {knowledgeModalOpen && (
+         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6" onClick={() => setKnowledgeModalOpen(false)}>
+            <Card3D className="w-full max-w-3xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+               <div className="flex justify-between items-center mb-6">
+                 <h2 className="text-2xl font-black flex items-center gap-2"><BrainCircuit className="text-indigo-600"/> AI Brain Configuration</h2>
+                 <button onClick={() => setKnowledgeModalOpen(false)}><X/></button>
+               </div>
+               
+               {/* MASTER DOCUMENT SECTION */}
+               <div className="mb-8 bg-indigo-50 p-4 rounded-xl border-2 border-indigo-100">
+                  <div className="flex items-center gap-2 mb-2">
+                     <BookOpen className="text-indigo-600" size={20}/>
+                     <h3 className="font-bold text-indigo-900">Master Source Material (NotebookLM Style)</h3>
+                  </div>
+                  <p className="text-xs text-indigo-700 mb-3">
+                     Paste your FULL product brochures, sales scripts, pricing PDFs, and training manuals here. 
+                     The AI will read this entire block to answer questions and handle objections accurately.
+                  </p>
+                  <textarea 
+                    className="w-full h-64 p-4 rounded-xl border-2 border-indigo-200 text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:outline-none resize-y"
+                    placeholder="PASTE EVERYTHING HERE..."
+                    value={knowledge?.masterDocumentText || ''}
+                    onChange={e => setKnowledge(prev => prev ? {...prev, masterDocumentText: e.target.value} : null)}
+                  />
+               </div>
+
+               <div className="grid grid-cols-2 gap-4">
+                  <Input3D label="Product Name" value={knowledge?.productName || ''} onChange={e => setKnowledge(prev => prev ? {...prev, productName: e.target.value} : null)} />
+                  <Input3D label="Pricing Structure" value={knowledge?.pricing || ''} onChange={e => setKnowledge(prev => prev ? {...prev, pricing: e.target.value} : null)} />
+               </div>
+               <div className="mb-4">
+                  <label className="font-bold text-sm text-slate-700 mb-1 block">Unique Selling Points</label>
+                  <textarea className="w-full border-2 border-slate-300 rounded-xl p-3 h-20" value={knowledge?.uniqueSellingPoints || ''} onChange={e => setKnowledge(prev => prev ? {...prev, uniqueSellingPoints: e.target.value} : null)} />
+               </div>
+               <div className="mb-6">
+                  <label className="font-bold text-sm text-slate-700 mb-1 block">The "Golden Pitch"</label>
+                  <textarea className="w-full border-2 border-slate-300 rounded-xl p-3 h-20" value={knowledge?.salesPitch || ''} onChange={e => setKnowledge(prev => prev ? {...prev, salesPitch: e.target.value} : null)} />
+               </div>
+
+               <Button3D className="w-full" onClick={() => { if(knowledge) { saveCompanyKnowledge(knowledge); setKnowledgeModalOpen(false); } }} icon={Save}>Save Knowledge Base</Button3D>
+            </Card3D>
+         </div>
+       )}
+       
+       {/* 4. LEAD DETAILS / ACTION MODAL */}
+       {selectedLead && (
+           <LeadDetailsModal 
+               lead={selectedLead} 
+               logs={logs} 
+               onClose={() => setSelectedLead(null)} 
+               onUpdate={handleUpdateLogWrapper} 
+           />
+       )}
+       
+       {/* 5. PROFILE MODAL */}
+       {profileModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6" onClick={() => setProfileModalOpen(false)}>
+             <Card3D className="w-full max-w-sm text-center" onClick={(e) => e.stopPropagation()}>
+                <h2 className="text-xl font-black mb-4">Edit Profile</h2>
+                <div className="w-24 h-24 mx-auto rounded-full overflow-hidden border-4 border-indigo-100 mb-4 relative group cursor-pointer" onClick={() => {
+                    const url = prompt("Enter new Image URL (e.g. from Unsplash or DiceBear):", user.photoURL);
+                    if(url) updateUserProfile(user.uid, { photoURL: url }).then(u => { if(u) setUser(u); });
+                }}>
+                   <img src={user.photoURL} className="w-full h-full object-cover" />
+                   <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white font-bold text-xs">Change</div>
+                </div>
+                <Input3D label="Name" value={user.name} onChange={e => updateUserProfile(user.uid, { name: e.target.value }).then(u => { if(u) setUser(u); })} />
+                <Button3D className="w-full mt-4" onClick={() => setProfileModalOpen(false)}>Close</Button3D>
+             </Card3D>
+          </div>
+       )}
+
+    </div>
+  );
+}
