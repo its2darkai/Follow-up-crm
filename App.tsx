@@ -5,7 +5,7 @@ import {
   Clock, Briefcase, User as UserIcon, Filter, X, Trash2, Trophy, TrendingUp, Crown, BarChart3,
   AlertTriangle, FileWarning, ClipboardList, Settings, Camera, Pencil, Info, Shield, UserPlus,
   Percent, Activity, Sparkles, Bot, Medal, MessageSquare, Mail, Copy, Columns, List, Gauge,
-  Zap, Sword, BrainCircuit, BookOpen, Save, RefreshCw
+  Zap, Sword, BrainCircuit, BookOpen, Save, RefreshCw, HelpCircle, LockKeyhole
 } from 'lucide-react';
 import { format, isToday, isBefore, differenceInDays, isSameDay, isSameMonth, isSameWeek } from 'date-fns';
 // @ts-ignore
@@ -15,7 +15,7 @@ import { User, Role, InteractionLog, LeadStatus, CallType, CompanyKnowledge } fr
 import { 
   loginUser, registerUser, logoutUser, getCurrentUser, getLogs, checkPhoneExists, saveLog, 
   updateLogStatus, deleteLog, getAllUsers, updateUserProfile, updateLog, 
-  createUser, deleteUser, adminUpdateUser, getCompanyKnowledge, saveCompanyKnowledge, ensureMasterAdmin
+  createUser, deleteUser, adminUpdateUser, getCompanyKnowledge, saveCompanyKnowledge, ensureMasterAdmin, resetUserPassword, registerNewAdmin
 } from './services/storage';
 import { refineNotes, generateLeadInsights, AIInsights, generateDailyBriefing, generateMessageDraft, analyzeWinProbability, WinProbabilty, generateObjectionHandler } from './services/ai';
 import { Card3D, Button3D, Input3D, Select3D } from './components/UI';
@@ -117,22 +117,27 @@ const LeaderboardScreen: React.FC<{ onComplete: () => void }> = ({ onComplete })
 // --- AUTH SCREEN ---
 const AuthScreen: React.FC<{ onLogin: (u: User) => void }> = ({ onLogin }) => {
   const [isLogin, setIsLogin] = useState(true);
+  const [showEmergency, setShowEmergency] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [successMsg, setSuccessMsg] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setSuccessMsg('');
     setLoading(true);
     
     try {
       let user;
-      if (isLogin) {
-        user = await loginUser(email, password);
+      if (showEmergency) {
+         user = await registerNewAdmin(email, password);
+      } else if (isLogin) {
+         user = await loginUser(email, password);
       } else {
-        user = await registerUser(email, password);
+         user = await registerUser(email, password);
       }
       localStorage.setItem('crm_current_user', JSON.stringify(user));
       onLogin(user);
@@ -143,19 +148,60 @@ const AuthScreen: React.FC<{ onLogin: (u: User) => void }> = ({ onLogin }) => {
     }
   };
 
-  const handleAdminReset = async () => {
+  const handleAdminInit = async () => {
     try {
         setLoading(true);
         const msg = await ensureMasterAdmin();
-        alert(msg);
+        setSuccessMsg(msg);
         setEmail('admin@followup.com');
-        setIsLogin(false); // Switch to register
+        setError('');
     } catch (e: any) {
-        alert(e.message);
+        setError(e.message);
     } finally {
         setLoading(false);
     }
   };
+
+  const handleForgotPassword = async () => {
+      if (!email) {
+          setError("Please enter your email address first.");
+          return;
+      }
+      try {
+          await resetUserPassword(email);
+          setSuccessMsg(`Password reset email sent to ${email}. Check your inbox (and spam).`);
+          setError('');
+      } catch (e: any) {
+          setError(e.message);
+      }
+  };
+
+  if (showEmergency) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-rose-50 p-6">
+        <div className="w-full max-w-md">
+           <Card3D className="bg-white border-rose-200">
+             <div className="text-center mb-6">
+               <div className="w-16 h-16 bg-rose-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                 <LockKeyhole className="text-rose-600" size={32} />
+               </div>
+               <h2 className="text-2xl font-black text-rose-700">Emergency Admin</h2>
+               <p className="text-sm text-slate-500">Create a new Admin account to bypass lockout.</p>
+             </div>
+             <form onSubmit={handleSubmit}>
+               <Input3D label="Your Real Email" type="email" value={email} onChange={e => setEmail(e.target.value)} required />
+               <Input3D label="New Password" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
+               
+               {error && <div className="text-rose-600 font-bold text-sm mb-4">{error}</div>}
+               
+               <Button3D type="submit" variant="danger" className="w-full" loading={loading}>Force Create Admin</Button3D>
+               <button type="button" onClick={() => setShowEmergency(false)} className="w-full mt-4 text-sm font-bold text-slate-500 hover:text-slate-800">Cancel</button>
+             </form>
+           </Card3D>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6 relative overflow-hidden">
@@ -172,13 +218,13 @@ const AuthScreen: React.FC<{ onLogin: (u: User) => void }> = ({ onLogin }) => {
           <div className="flex border-b border-slate-100 mb-4">
             <button 
               className={`flex-1 pb-2 font-bold text-sm ${isLogin ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-400'}`}
-              onClick={() => setIsLogin(true)}
+              onClick={() => { setIsLogin(true); setError(''); setSuccessMsg(''); }}
             >
               Login
             </button>
             <button 
               className={`flex-1 pb-2 font-bold text-sm ${!isLogin ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-400'}`}
-              onClick={() => setIsLogin(false)}
+              onClick={() => { setIsLogin(false); setError(''); setSuccessMsg(''); }}
             >
               First Time Setup
             </button>
@@ -190,11 +236,7 @@ const AuthScreen: React.FC<{ onLogin: (u: User) => void }> = ({ onLogin }) => {
             
             {!isLogin && (
                <div className="mb-4 p-3 bg-indigo-50 text-indigo-700 text-xs rounded-lg font-medium">
-                 Note: Your email must be authorized by an Admin before you can register.
-                 <br/><br/>
-                 <button type="button" onClick={handleAdminReset} className="underline font-bold hover:text-indigo-900">
-                    Are you the Admin? Click here to Initialize.
-                 </button>
+                 Use this tab ONLY if you are new and setting your password for the first time.
                </div>
             )}
 
@@ -204,9 +246,30 @@ const AuthScreen: React.FC<{ onLogin: (u: User) => void }> = ({ onLogin }) => {
               </div>
             )}
 
+            {successMsg && (
+              <div className="mb-4 p-3 bg-emerald-50 border-2 border-emerald-100 rounded-xl flex items-center gap-2 text-emerald-600 font-bold text-sm">
+                <CheckCircle2 size={16} /> {successMsg}
+              </div>
+            )}
+
             <Button3D type="submit" className="w-full mt-2" loading={loading}>
               {isLogin ? 'Secure Login' : 'Create Account'}
             </Button3D>
+
+            <div className="mt-6 flex flex-col gap-3 text-center border-t border-slate-100 pt-4">
+                 <button type="button" onClick={handleForgotPassword} className="text-slate-500 text-xs font-bold hover:text-indigo-600">
+                    Forgot Password?
+                 </button>
+                 
+                 <div className="flex justify-between items-center gap-2">
+                    <button type="button" onClick={handleAdminInit} className="text-xs bg-slate-100 text-slate-500 px-3 py-2 rounded-lg font-bold hover:bg-slate-200 flex-1">
+                        Repair Database
+                    </button>
+                    <button type="button" onClick={() => setShowEmergency(true)} className="text-xs bg-rose-50 text-rose-600 px-3 py-2 rounded-lg font-bold hover:bg-rose-100 flex-1 border border-rose-200">
+                        Locked out?
+                    </button>
+                 </div>
+            </div>
           </form>
         </Card3D>
       </div>
@@ -542,6 +605,19 @@ export default function FollowUpApp() {
                  <h2 className="text-2xl font-black flex items-center gap-2"><Shield className="text-indigo-600"/> Team Management</h2>
                  <button onClick={() => setTeamModalOpen(false)}><X/></button>
               </div>
+
+              <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-xl mb-6">
+                 <h3 className="font-bold text-indigo-900 text-sm mb-2 flex items-center gap-2"><Info size={16}/> How to Invite Agents</h3>
+                 <ol className="text-xs text-indigo-700 list-decimal ml-4 space-y-1 mb-3">
+                    <li>Add their email below to authorize them.</li>
+                    <li>Send them the link to this app.</li>
+                    <li>Tell them to click <b>"First Time Setup"</b> and create their own password.</li>
+                 </ol>
+                 <Button3D variant="secondary" className="w-full text-xs py-2" icon={Copy} onClick={() => {
+                    navigator.clipboard.writeText(`Welcome to the team!\n\n1. Go to: ${window.location.href}\n2. Click "First Time Setup"\n3. Enter your email and create a password.`);
+                    alert("Invite message copied to clipboard!");
+                 }}>Copy Invite Message</Button3D>
+              </div>
               
               <div className="bg-slate-50 p-4 rounded-xl border-2 border-slate-100 mb-6">
                 <h3 className="font-bold text-sm mb-3 uppercase text-slate-500">{editingTeamUser ? 'Edit Member' : 'Add New Member'}</h3>
@@ -551,90 +627,4 @@ export default function FollowUpApp() {
                 </div>
                 <Select3D label="Role" options={[{label:'Agent', value:Role.AGENT}, {label:'Admin', value:Role.ADMIN}]} value={newMemberRole} onChange={e => setNewMemberRole(e.target.value as any)} />
                 <div className="flex gap-2">
-                   <Button3D onClick={handleAddOrUpdateUser} className="flex-1">{editingTeamUser ? 'Update User' : 'Add to Team'}</Button3D>
-                   {editingTeamUser && <Button3D variant="ghost" onClick={() => { setEditingTeamUser(null); setNewMemberName(''); setNewMemberEmail(''); }}>Cancel</Button3D>}
-                </div>
-              </div>
-
-              <h3 className="font-bold text-sm mb-3 uppercase text-slate-500">Roster</h3>
-              <div className="space-y-2">
-                 {teamMembers.map(m => (
-                    <div key={m.uid} className="flex items-center justify-between p-3 bg-white border-2 border-slate-100 rounded-xl">
-                       <div className="flex items-center gap-3">
-                          <img src={m.photoURL} className="w-10 h-10 rounded-full bg-slate-100" />
-                          <div>
-                             <p className="font-bold text-slate-900">{m.name} {m.uid === user.uid && <span className="text-xs bg-indigo-100 text-indigo-700 px-1 rounded">YOU</span>}</p>
-                             <p className="text-xs text-slate-500">{m.email} • {m.role}</p>
-                          </div>
-                       </div>
-                       <div className="flex gap-2">
-                          <button onClick={() => { setEditingTeamUser(m.uid); setNewMemberName(m.name); setNewMemberEmail(m.email); setNewMemberRole(m.role); }} className="p-2 bg-slate-100 rounded-lg hover:bg-slate-200"><Pencil size={16}/></button>
-                          {m.uid !== user.uid && <button onClick={() => { if(confirm('Remove user?')) deleteUser(m.uid).then(loadTeam); }} className="p-2 bg-rose-100 text-rose-600 rounded-lg hover:bg-rose-200"><Trash2 size={16}/></button>}
-                       </div>
-                    </div>
-                 ))}
-              </div>
-           </Card3D>
-         </div>
-       )}
-
-       {/* 3. KNOWLEDGE BASE (BRAIN) */}
-       {knowledgeModalOpen && knowledge && (
-         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6" onClick={() => setKnowledgeModalOpen(false)}>
-            <Card3D className="w-full max-w-4xl h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-               <div className="flex justify-between items-center mb-6">
-                 <h2 className="text-2xl font-black flex items-center gap-2"><BrainCircuit className="text-indigo-600"/> AI Brain Configuration</h2>
-                 <button onClick={() => setKnowledgeModalOpen(false)}><X/></button>
-               </div>
-               
-               <div className="flex-1 overflow-y-auto pr-2 space-y-6">
-                  <div className="bg-indigo-50 p-4 rounded-xl border-2 border-indigo-100">
-                     <h3 className="font-bold text-indigo-900 mb-2 flex items-center gap-2"><BookOpen size={20}/> Master Source Material (NotebookLM Style)</h3>
-                     <p className="text-sm text-indigo-700 mb-3">Paste your entire sales brochure, script, pricing PDF text, and product manual here. The AI will read this before answering ANY question.</p>
-                     <textarea 
-                       className="w-full h-64 border-2 border-indigo-200 rounded-xl p-4 text-sm font-mono focus:ring-2 focus:ring-indigo-500 outline-none"
-                       placeholder="Paste full text content here..."
-                       value={knowledge.masterDocumentText}
-                       onChange={e => setKnowledge({...knowledge, masterDocumentText: e.target.value})}
-                     />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                     <Input3D label="Product Name" value={knowledge.productName} onChange={e => setKnowledge({...knowledge, productName: e.target.value})} />
-                     <Input3D label="Pricing Summary" value={knowledge.pricing} onChange={e => setKnowledge({...knowledge, pricing: e.target.value})} />
-                  </div>
-                  <div>
-                     <label className="font-bold text-sm mb-1 block">The Golden Pitch</label>
-                     <textarea className="w-full border-2 border-slate-300 rounded-xl p-3 h-24" value={knowledge.salesPitch} onChange={e => setKnowledge({...knowledge, salesPitch: e.target.value})} />
-                  </div>
-               </div>
-
-               <div className="mt-6 pt-4 border-t border-slate-100">
-                  <Button3D onClick={async () => { await saveCompanyKnowledge(knowledge); setKnowledgeModalOpen(false); }} className="w-full" icon={Save}>Save Knowledge Base</Button3D>
-               </div>
-            </Card3D>
-         </div>
-       )}
-
-       {/* 4. PROFILE MODAL */}
-       {profileModalOpen && (
-         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6" onClick={() => setProfileModalOpen(false)}>
-            <Card3D className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-               <div className="flex justify-between items-center mb-6">
-                 <h2 className="text-xl font-black">My Profile</h2>
-                 <button onClick={() => setProfileModalOpen(false)}><X/></button>
-               </div>
-               <div className="flex flex-col items-center mb-6">
-                  <img src={user.photoURL} className="w-24 h-24 rounded-full border-4 border-slate-200 mb-4 object-cover" />
-                  <Input3D label="Photo URL" value={user.photoURL || ''} onChange={e => setUser({...user, photoURL: e.target.value})} />
-                  <p className="text-xs text-slate-400">Paste a direct image link (Imgur, etc.)</p>
-               </div>
-               <Input3D label="Display Name" value={user.name} onChange={e => setUser({...user, name: e.target.value})} />
-               <Button3D onClick={async () => { await updateUserProfile(user.uid, { name: user.name, photoURL: user.photoURL }); setProfileModalOpen(false); }} className="w-full mt-4">Save Profile</Button3D>
-            </Card3D>
-         </div>
-       )}
-
-    </div>
-  );
-}
+                   <Button3D onClick={handleAddOrUpdateUser

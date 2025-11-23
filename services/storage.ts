@@ -1,11 +1,10 @@
-
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
   signOut, 
-  onAuthStateChanged,
+  sendPasswordResetEmail,
   User as FirebaseUser
 } from 'firebase/auth';
 import { 
@@ -90,17 +89,20 @@ export const loginUser = async (email: string, password: string): Promise<User> 
     if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
         throw new Error("Incorrect password.");
     }
+    if (error.code === 'auth/user-not-found') {
+        throw new Error("Account not found. Please use 'First Time Setup'.");
+    }
     throw new Error(error.message);
   }
 };
 
 export const registerUser = async (email: string, password: string): Promise<User> => {
-  // 1. Check if Admin has authorized this email
+  // 1. Check if Admin has authorized this email (Firestore check)
   const userDocRef = doc(db, USERS_COLLECTION, email.toLowerCase());
   const userDoc = await getDoc(userDocRef);
   
   if (!userDoc.exists()) {
-    throw new Error(`The email "${email}" is not authorized. Please ask the Admin to add you to the Team first, or use the 'Initialize Admin' button if you are the owner.`);
+    throw new Error(`The email "${email}" is not authorized. If you are the Admin, click 'Locked out?' below to force-create a new Admin account.`);
   }
 
   // 2. Create Auth Account
@@ -117,6 +119,42 @@ export const registerUser = async (email: string, password: string): Promise<Use
     }
     throw new Error(error.message);
   }
+};
+
+// 🚨 EMERGENCY ADMIN CREATION
+// Bypasses the "Allow List" check. Only used for recovery.
+export const registerNewAdmin = async (email: string, password: string): Promise<User> => {
+  try {
+    // 1. Create Auth
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    const firebaseUser = userCredential.user;
+
+    // 2. Force Write Admin Profile to Firestore
+    const newUser: User = {
+      uid: firebaseUser.uid,
+      name: 'Emergency Admin',
+      email: email.toLowerCase(),
+      role: Role.ADMIN,
+      photoURL: `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}`,
+    };
+
+    await setDoc(doc(db, USERS_COLLECTION, email.toLowerCase()), newUser);
+    
+    return newUser;
+  } catch (error: any) {
+    if (error.code === 'auth/email-already-in-use') {
+        throw new Error("This email is already registered. Please Login instead.");
+    }
+    throw new Error(error.message);
+  }
+};
+
+export const resetUserPassword = async (email: string) => {
+    try {
+        await sendPasswordResetEmail(auth, email);
+    } catch (error: any) {
+        throw new Error(error.message);
+    }
 };
 
 export const logoutUser = async () => {
@@ -139,7 +177,7 @@ export const getAllUsers = async (): Promise<User[]> => {
 
 // Admin adds a user to the "Allowed List"
 export const createUser = async (newUser: Omit<User, 'uid' | 'photoURL'>): Promise<void> => {
-  const emailKey = newUser.email.toLowerCase();
+  const emailKey = newUser.email.trim().toLowerCase(); // Trim whitespace
   const userRef = doc(db, USERS_COLLECTION, emailKey);
   const existing = await getDoc(userRef);
   
@@ -161,13 +199,10 @@ export const createUser = async (newUser: Omit<User, 'uid' | 'photoURL'>): Promi
 };
 
 export const adminUpdateUser = async (uid: string, updates: Partial<User>): Promise<void> => {
-  // In this architecture, since we use Email as Doc ID, we can't easily change email.
-  // We will only allow updating Name and Role for now to keep it simple.
   if (updates.email) {
-    throw new Error("Changing email is not supported in this version. Delete and recreate.");
+    throw new Error("Changing email is not supported. Delete and recreate.");
   }
 
-  // We need to find the doc with this UID
   const q = query(collection(db, USERS_COLLECTION), where("uid", "==", uid));
   const snapshot = await getDocs(q);
   
@@ -184,8 +219,6 @@ export const deleteUser = async (uid: string): Promise<void> => {
   if (!snapshot.empty) {
     await deleteDoc(snapshot.docs[0].ref);
   }
-  // Note: This doesn't delete the Auth account, just the DB record.
-  // The user won't be able to login because login checks DB.
 };
 
 export const updateUserProfile = async (uid: string, updates: Partial<User>): Promise<User | null> => {
@@ -298,12 +331,7 @@ export const ensureMasterAdmin = async (): Promise<string> => {
   try {
     const adminEmail = 'admin@followup.com';
     const userRef = doc(db, USERS_COLLECTION, adminEmail);
-    const snap = await getDoc(userRef);
-
-    if (snap.exists()) {
-      return `Admin doc for ${adminEmail} already exists. You can register now.`;
-    }
-
+    // Force set/overwrite to guarantee it exists
     await setDoc(userRef, {
       uid: 'master_admin_placeholder', 
       name: 'Master Admin',
@@ -311,10 +339,11 @@ export const ensureMasterAdmin = async (): Promise<string> => {
       role: Role.ADMIN,
       photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=admin',
       password: 'placeholder'
-    });
-    return `Success! Authorized: ${adminEmail}. Go to "First Time Setup" to create your password.`;
+    }, { merge: true }); // Merge so we don't destroy UID if it was valid
+    
+    return `Database Initialized for: ${adminEmail}. \n\nIf "First Time Setup" says Account Exists, please use LOGIN. \n\nIf Login fails, click "Forgot Password".`;
   } catch (error: any) {
     console.error(error);
-    throw new Error(`DB Error: ${error.message}. Check your Firebase Console rules.`);
+    throw new Error(`DB Error: ${error.message}.`);
   }
 };
