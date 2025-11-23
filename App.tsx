@@ -1,11 +1,11 @@
-
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   LayoutDashboard, Users, Search, PlusCircle, LogOut, Phone, Megaphone, Calendar, CheckCircle2,
   Clock, Briefcase, User as UserIcon, Filter, X, Trash2, Trophy, TrendingUp, Crown, BarChart3,
   AlertTriangle, FileWarning, ClipboardList, Settings, Camera, Pencil, Info, Shield, UserPlus,
   Percent, Activity, Sparkles, Bot, Medal, MessageSquare, Mail, Copy, Columns, List, Gauge,
-  Zap, Sword, BrainCircuit, BookOpen, Save, RefreshCw, HelpCircle, LockKeyhole, Send, Minimize2, PhoneMissed
+  Zap, Sword, BrainCircuit, BookOpen, Save, RefreshCw, HelpCircle, LockKeyhole, Send, Minimize2, PhoneMissed,
+  Newspaper, Globe, TrendingDown
 } from 'lucide-react';
 import { format, isToday, isBefore, differenceInDays, isSameDay, isSameMonth, isSameWeek } from 'date-fns';
 // @ts-ignore
@@ -13,11 +13,15 @@ import confetti from 'canvas-confetti';
 
 import { User, Role, InteractionLog, LeadStatus, CallType, CompanyKnowledge } from './types';
 import { 
-  loginUser, registerUser, logoutUser, getCurrentUser, getLogs, checkPhoneExists, saveLog, 
+  loginUser, registerUser, logoutUser, getCurrentUser, getLogs, saveLog, 
   updateLogStatus, deleteLog, getAllUsers, updateUserProfile, updateLog, 
   createUser, deleteUser, adminUpdateUser, getCompanyKnowledge, saveCompanyKnowledge, ensureMasterAdmin, resetUserPassword, registerNewAdmin
 } from './services/storage';
-import { refineNotes, generateLeadInsights, AIInsights, generateDailyBriefing, generateMessageDraft, analyzeWinProbability, WinProbabilty, generateObjectionHandler, chatWithSalesAssistant, generateCallStrategy, CallStrategy, generateNoAnswerMessage } from './services/ai';
+import { 
+  refineNotes, generateDailyBriefing, chatWithSalesAssistant, generateCallStrategy, 
+  generateNoAnswerMessage, CallStrategy, generatePerformanceAnalysis, PerformanceAnalysis, 
+  getMarketIntel, MarketIntel, getMarketDeepDive 
+} from './services/ai';
 import { Card3D, Button3D, Input3D, Select3D } from './components/UI';
 
 // --- POLYFILLS ---
@@ -70,7 +74,6 @@ const SalesCopilot: React.FC = () => {
     <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
       {isOpen ? (
         <div className="w-80 md:w-96 bg-white border-2 border-slate-900 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.2)] overflow-hidden flex flex-col h-[500px] animate-in slide-in-from-bottom-10 duration-300">
-           {/* Header */}
            <div className="bg-slate-900 text-white p-4 flex justify-between items-center shrink-0">
               <div className="flex items-center gap-2">
                  <Sparkles className="text-amber-400" size={20} />
@@ -79,7 +82,6 @@ const SalesCopilot: React.FC = () => {
               <button onClick={() => setIsOpen(false)} className="hover:bg-slate-800 p-1 rounded"><Minimize2 size={18}/></button>
            </div>
            
-           {/* Chat Area */}
            <div className="flex-1 overflow-y-auto p-4 bg-slate-50 space-y-4">
               {messages.map((m, i) => (
                 <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -102,7 +104,6 @@ const SalesCopilot: React.FC = () => {
               <div ref={messagesEndRef} />
            </div>
 
-           {/* Input Area */}
            <div className="p-3 bg-white border-t border-slate-200 shrink-0 flex gap-2">
               <input 
                 type="text" 
@@ -380,13 +381,11 @@ const LeadDetailsModal: React.FC<{ lead: InteractionLog, logs: InteractionLog[],
   const [callStrategy, setCallStrategy] = useState<CallStrategy | null>(null);
   const [loadingStrategy, setLoadingStrategy] = useState(false);
   
-  // No Answer Logic
   const [showNoAnswerUI, setShowNoAnswerUI] = useState(false);
   const [noAnswerMsg, setNoAnswerMsg] = useState('');
   const [regenIntent, setRegenIntent] = useState('');
   const [generatingDraft, setGeneratingDraft] = useState(false);
 
-  // Load Strategy on Mount
   useEffect(() => {
     const load = async () => {
       setLoadingStrategy(true);
@@ -418,12 +417,10 @@ const LeadDetailsModal: React.FC<{ lead: InteractionLog, logs: InteractionLog[],
           </div>
 
           <div className="p-6 space-y-6">
-            {/* CALL PREP STRATEGY */}
             <div className="bg-gradient-to-br from-indigo-50 to-white border-2 border-indigo-100 rounded-xl p-5 relative overflow-hidden shadow-sm">
                 <div className="absolute top-0 right-0 p-3 opacity-5"><BrainCircuit size={80} className="text-indigo-900"/></div>
                 <div className="relative z-10">
                   <h3 className="font-black text-indigo-900 mb-3 flex items-center gap-2"><Sparkles size={18}/> Call Strategy Prep</h3>
-                  
                   {loadingStrategy ? (
                       <div className="animate-pulse space-y-2">
                         <div className="h-4 bg-indigo-200 rounded w-3/4"></div>
@@ -452,7 +449,6 @@ const LeadDetailsModal: React.FC<{ lead: InteractionLog, logs: InteractionLog[],
                 </div>
             </div>
 
-            {/* HISTORY TIMELINE */}
             <div>
                 <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2"><List size={18}/> Interaction History</h3>
                 <div className="space-y-0 relative border-l-2 border-slate-200 ml-3 pl-6 pb-2 max-h-40 overflow-y-auto custom-scrollbar">
@@ -472,7 +468,6 @@ const LeadDetailsModal: React.FC<{ lead: InteractionLog, logs: InteractionLog[],
                 </div>
             </div>
 
-            {/* NO ANSWER / ACTIONS */}
             <div className="border-t-2 border-slate-100 pt-6">
                 <div className="grid grid-cols-2 gap-4 mb-4">
                     <Button3D variant="success" icon={CheckCircle2} onClick={() => { onUpdate(lead.id, { leadStatus: LeadStatus.PAID, isCompleted: true }); onClose(); confetti(); }}>Mark PAID</Button3D>
@@ -528,11 +523,9 @@ export default function FollowUpApp() {
   const [user, setUser] = useState<User | null>(null);
   const [showLeaderboard, setShowLeaderboard] = useState(true);
   
-  // Core Data
   const [logs, setLogs] = useState<InteractionLog[]>([]);
-  const [activeTab, setActiveTab] = useState<'home' | 'leads' | 'analytics'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'leads' | 'analytics' | 'market'>('home');
   
-  // UI States 
   const [dailyBriefing, setDailyBriefing] = useState('');
   const [phone, setPhone] = useState('');
   const [clientName, setClientName] = useState('');
@@ -542,7 +535,6 @@ export default function FollowUpApp() {
   const [followUpDate, setFollowUpDate] = useState('');
   const [followUpTime, setFollowUpTime] = useState('');
   
-  // Modals
   const [selectedLead, setSelectedLead] = useState<InteractionLog | null>(null);
   const [missedLeadsModalOpen, setMissedLeadsModalOpen] = useState(false);
   const [teamModalOpen, setTeamModalOpen] = useState(false);
@@ -551,27 +543,26 @@ export default function FollowUpApp() {
   const [adminEditId, setAdminEditId] = useState<string | null>(null);
 
   const [search, setSearch] = useState('');
-  const [viewMode, setViewMode] = useState<'list' | 'board'>('list');
   const [filterStatus, setFilterStatus] = useState('All');
 
-  // Team Management State
   const [teamMembers, setTeamMembers] = useState<User[]>([]);
   const [newMemberEmail, setNewMemberEmail] = useState('');
   const [newMemberName, setNewMemberName] = useState('');
   const [newMemberRole, setNewMemberRole] = useState<Role>(Role.AGENT);
   const [editingTeamUser, setEditingTeamUser] = useState<string | null>(null);
 
-  // Knowledge Base State
   const [knowledge, setKnowledge] = useState<CompanyKnowledge | null>(null);
+  
+  // Analytics & Market States
+  const [analysis, setAnalysis] = useState<PerformanceAnalysis | null>(null);
+  const [marketIntel, setMarketIntel] = useState<MarketIntel | null>(null);
+  const [loadingMarket, setLoadingMarket] = useState(false);
 
-  // Initialize
   useEffect(() => {
-    // Only try to auto-login from cache, do NOT auto-seed silently anymore
     const current = getCurrentUser();
     if (current) setUser(current);
   }, []);
 
-  // Fetch Data
   const fetchLogs = useCallback(async () => {
     if (!user) return;
     const all = await getLogs();
@@ -591,10 +582,23 @@ export default function FollowUpApp() {
        const today = logs.filter(l => l.followUpDate === format(new Date(), 'yyyy-MM-dd') && !l.isCompleted).length;
        const missed = logs.filter(l => isBefore(parseISO(l.followUpDate), startOfToday()) && !l.isCompleted).length;
        generateDailyBriefing(user.name, today, missed).then(setDailyBriefing);
+       
+       // Load Performance Analysis
+       generatePerformanceAnalysis(logs, user.name).then(setAnalysis);
     }
   }, [user, showLeaderboard, logs]);
 
-  // --- HANDLERS ---
+  const handleLoadMarket = async () => {
+    if (marketIntel) return;
+    setLoadingMarket(true);
+    const data = await getMarketIntel();
+    setMarketIntel(data);
+    setLoadingMarket(false);
+  };
+  
+  useEffect(() => {
+    if (activeTab === 'market') handleLoadMarket();
+  }, [activeTab]);
 
   const handleSaveLog = async () => {
     if (!phone || !clientName) return alert("Phone and Name required");
@@ -673,7 +677,6 @@ export default function FollowUpApp() {
     fetchLogs();
   };
 
-  // View Rendering
   if (!user) return <AuthScreen onLogin={setUser} />;
   if (showLeaderboard) return <LeaderboardScreen onComplete={() => setShowLeaderboard(false)} />;
 
@@ -687,7 +690,6 @@ export default function FollowUpApp() {
 
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
-       {/* HEADER */}
        <header className="bg-slate-900 text-white pt-8 pb-24 px-6 shadow-3d relative overflow-hidden">
          <div className="max-w-5xl mx-auto flex justify-between items-center relative z-10">
            <div className="flex items-center gap-4 cursor-pointer" onClick={() => setProfileModalOpen(true)}>
@@ -711,12 +713,12 @@ export default function FollowUpApp() {
        </header>
 
        <main className="max-w-5xl mx-auto px-6 -mt-16 relative z-20">
-          {/* TABS */}
           <div className="flex gap-4 mb-6 overflow-x-auto py-2 no-scrollbar">
              {[
                {id: 'home', label: 'Dashboard', icon: LayoutDashboard},
                {id: 'leads', label: 'All Leads', icon: Users},
-               {id: 'analytics', label: 'Analytics', icon: BarChart3}
+               {id: 'analytics', label: 'Analytics', icon: BarChart3},
+               {id: 'market', label: 'Market Intel', icon: Globe}
              ].map(t => (
                <button 
                  key={t.id} 
@@ -809,29 +811,142 @@ export default function FollowUpApp() {
           )}
 
           {activeTab === 'analytics' && (
-             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card3D className="bg-white">
-                   <p className="text-xs font-bold text-slate-400 uppercase">Total Sales (Month)</p>
-                   <p className="text-4xl font-black text-slate-900">{logs.filter(l => l.leadStatus === LeadStatus.PAID && isSameMonth(parseISO(l.followUpDate), new Date())).length}</p>
+             <div className="animate-in fade-in duration-300">
+                {/* DARK MODE DASHBOARD */}
+                <Card3D className="bg-slate-900 border-slate-950 text-white mb-6 p-8">
+                  <div className="flex flex-col md:flex-row gap-8 items-center">
+                     {/* HEALTH GAUGE */}
+                     <div className="relative w-40 h-24 flex items-end justify-center shrink-0">
+                        <div className="absolute w-40 h-20 bg-slate-800 rounded-t-full top-0 overflow-hidden">
+                          <div className="w-full h-full origin-bottom transition-all duration-1000 ease-out" 
+                               style={{ transform: `rotate(${(analysis?.healthScore || 0) * 1.8 - 180}deg)`, background: 'conic-gradient(from 180deg, #ef4444 0deg, #eab308 90deg, #22c55e 180deg)' }}></div>
+                        </div>
+                        <div className="absolute w-32 h-16 bg-slate-900 rounded-t-full bottom-0 flex items-end justify-center pb-2">
+                           <span className="text-3xl font-black">{analysis?.healthScore || 0}</span>
+                        </div>
+                        <p className="absolute -bottom-8 text-xs font-bold text-slate-400 uppercase">Agent Health</p>
+                     </div>
+
+                     {/* AI COACH TEXT */}
+                     <div className="flex-1">
+                        <h3 className="flex items-center gap-2 font-bold text-indigo-400 mb-2"><Bot size={16}/> Performance Coach</h3>
+                        <p className="text-slate-300 text-sm leading-relaxed italic">"{analysis?.review || 'Gathering data...'}"</p>
+                        
+                        <div className="flex gap-4 mt-4">
+                           <div className="text-xs">
+                             <p className="font-bold text-emerald-400 mb-1">Strengths</p>
+                             {analysis?.strengths.map(s => <p key={s} className="text-slate-400">• {s}</p>)}
+                           </div>
+                           <div className="text-xs">
+                             <p className="font-bold text-rose-400 mb-1">Weaknesses</p>
+                             {analysis?.weaknesses.map(w => <p key={w} className="text-slate-400">• {w}</p>)}
+                           </div>
+                        </div>
+                     </div>
+                  </div>
                 </Card3D>
-                <Card3D className="bg-white">
-                   <p className="text-xs font-bold text-slate-400 uppercase">Calls (Today)</p>
-                   <p className="text-4xl font-black text-indigo-600">{logs.filter(l => isToday(parseISO(l.followUpDate))).length}</p>
-                </Card3D>
-                <Card3D className="bg-white">
-                   <p className="text-xs font-bold text-slate-400 uppercase">Pipeline</p>
-                   <p className="text-4xl font-black text-emerald-600">{logs.filter(l => l.leadStatus === LeadStatus.NEW_PROSPECT).length}</p>
-                </Card3D>
+
+                {/* FUNNEL & METRICS */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                   <Card3D className="bg-white">
+                      <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2"><Filter size={18}/> Conversion Funnel</h3>
+                      <div className="space-y-2">
+                         <div className="bg-slate-100 p-3 rounded-lg flex justify-between items-center relative overflow-hidden">
+                            <div className="absolute left-0 top-0 h-full bg-slate-200" style={{width: '100%'}}></div>
+                            <span className="relative z-10 font-bold text-sm text-slate-600">Total Leads</span>
+                            <span className="relative z-10 font-black">{logs.length}</span>
+                         </div>
+                         <div className="bg-slate-100 p-3 rounded-lg flex justify-between items-center relative overflow-hidden mx-4">
+                            <div className="absolute left-0 top-0 h-full bg-indigo-200" style={{width: `${(logs.filter(l => l.leadStatus !== LeadStatus.NEW_PROSPECT).length / (logs.length || 1)) * 100}%`}}></div>
+                            <span className="relative z-10 font-bold text-sm text-indigo-800">Engaged</span>
+                            <span className="relative z-10 font-black text-indigo-900">{logs.filter(l => l.leadStatus !== LeadStatus.NEW_PROSPECT).length}</span>
+                         </div>
+                         <div className="bg-slate-100 p-3 rounded-lg flex justify-between items-center relative overflow-hidden mx-8">
+                            <div className="absolute left-0 top-0 h-full bg-emerald-300" style={{width: `${(logs.filter(l => l.leadStatus === LeadStatus.PAID).length / (logs.length || 1)) * 100}%`}}></div>
+                            <span className="relative z-10 font-bold text-sm text-emerald-800">PAID</span>
+                            <span className="relative z-10 font-black text-emerald-900">{logs.filter(l => l.leadStatus === LeadStatus.PAID).length}</span>
+                         </div>
+                      </div>
+                   </Card3D>
+                   
+                   <div className="grid grid-rows-2 gap-4">
+                      <Card3D className="bg-emerald-50 border-emerald-200">
+                         <p className="text-xs font-bold text-emerald-600 uppercase">Revenue (Est)</p>
+                         <p className="text-4xl font-black text-emerald-800">${logs.filter(l => l.leadStatus === LeadStatus.PAID).length * 100}</p>
+                      </Card3D>
+                      <Card3D className="bg-indigo-50 border-indigo-200">
+                         <p className="text-xs font-bold text-indigo-600 uppercase">Activity Score</p>
+                         <p className="text-4xl font-black text-indigo-800">{logs.length * 2 + logs.filter(l => l.isCompleted).length * 5}</p>
+                      </Card3D>
+                   </div>
+                </div>
+             </div>
+          )}
+
+          {activeTab === 'market' && (
+             <div className="animate-in fade-in duration-300 space-y-6">
+                <div className="bg-slate-900 rounded-2xl p-6 text-white shadow-3d mb-6 flex justify-between items-center">
+                   <div>
+                     <h2 className="text-2xl font-black flex items-center gap-2"><Globe className="text-emerald-400"/> Indian Market Intel</h2>
+                     <p className="text-slate-400 text-sm">Real-time updates powered by Google Search</p>
+                   </div>
+                   {loadingMarket && <div className="animate-spin text-emerald-400"><RefreshCw/></div>}
+                </div>
+
+                {loadingMarket && !marketIntel ? (
+                   <div className="text-center py-20 text-slate-400 font-bold">Scanning BSE/NSE Data...</div>
+                ) : (
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* TODAY */}
+                      <Card3D className="bg-white border-l-8 border-l-rose-500">
+                         <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Zap className="text-rose-500"/> Today's Headlines</h3>
+                         <ul className="space-y-3">
+                            {marketIntel?.today?.map((item, i) => (
+                               <li key={i} className="text-sm border-b border-slate-100 pb-2 last:border-0">
+                                  {item}
+                                  <button className="block text-xs font-bold text-indigo-600 mt-1 hover:underline" onClick={() => getMarketDeepDive(item).then(alert)}>Explain for Client</button>
+                               </li>
+                            ))}
+                         </ul>
+                      </Card3D>
+
+                      {/* WEEKLY */}
+                      <Card3D className="bg-white border-l-8 border-l-amber-500">
+                         <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Calendar className="text-amber-500"/> This Week</h3>
+                         <ul className="space-y-3">
+                            {marketIntel?.thisWeek?.map((item, i) => (
+                               <li key={i} className="text-sm border-b border-slate-100 pb-2 last:border-0">{item}</li>
+                            ))}
+                         </ul>
+                      </Card3D>
+
+                      {/* MONTHLY */}
+                      <Card3D className="bg-white border-l-8 border-l-indigo-500">
+                         <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><BarChart3 className="text-indigo-500"/> Monthly Macro</h3>
+                         <ul className="space-y-3">
+                            {marketIntel?.thisMonth?.map((item, i) => (
+                               <li key={i} className="text-sm border-b border-slate-100 pb-2 last:border-0">{item}</li>
+                            ))}
+                         </ul>
+                      </Card3D>
+
+                      {/* PREDICTIONS */}
+                      <Card3D className="bg-slate-900 border-slate-950 text-white">
+                         <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><TrendingUp className="text-emerald-400"/> Future Outlook (3-12M)</h3>
+                         <ul className="space-y-3">
+                            {marketIntel?.predictions?.map((item, i) => (
+                               <li key={i} className="text-sm border-b border-slate-800 pb-2 last:border-0 text-slate-300">{item}</li>
+                            ))}
+                         </ul>
+                      </Card3D>
+                   </div>
+                )}
              </div>
           )}
        </main>
        
-       {/* FLOATING SALES COPILOT */}
        <SalesCopilot />
 
-       {/* MODALS */}
-       
-       {/* 1. MISSED LEADS */}
        {missedLeadsModalOpen && (
          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6" onClick={() => setMissedLeadsModalOpen(false)}>
             <Card3D className="w-full max-w-lg max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -851,7 +966,6 @@ export default function FollowUpApp() {
          </div>
        )}
 
-       {/* 2. TEAM MANAGEMENT (ADMIN) */}
        {teamModalOpen && (
          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6" onClick={() => setTeamModalOpen(false)}>
            <Card3D className="w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -910,7 +1024,6 @@ export default function FollowUpApp() {
          </div>
        )}
 
-       {/* 3. KNOWLEDGE BASE (ADMIN) */}
        {knowledgeModalOpen && (
          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6" onClick={() => setKnowledgeModalOpen(false)}>
             <Card3D className="w-full max-w-3xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -919,7 +1032,6 @@ export default function FollowUpApp() {
                  <button onClick={() => setKnowledgeModalOpen(false)}><X/></button>
                </div>
                
-               {/* MASTER DOCUMENT SECTION */}
                <div className="mb-8 bg-indigo-50 p-4 rounded-xl border-2 border-indigo-100">
                   <div className="flex items-center gap-2 mb-2">
                      <BookOpen className="text-indigo-600" size={20}/>
@@ -955,7 +1067,6 @@ export default function FollowUpApp() {
          </div>
        )}
        
-       {/* 4. LEAD DETAILS / ACTION MODAL */}
        {selectedLead && (
            <LeadDetailsModal 
                lead={selectedLead} 
@@ -965,7 +1076,6 @@ export default function FollowUpApp() {
            />
        )}
        
-       {/* 5. PROFILE MODAL */}
        {profileModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6" onClick={() => setProfileModalOpen(false)}>
              <Card3D className="w-full max-w-sm text-center" onClick={(e) => e.stopPropagation()}>
