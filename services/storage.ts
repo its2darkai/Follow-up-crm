@@ -58,20 +58,38 @@ export const loginUser = async (email: string, password: string): Promise<User> 
     const firebaseUser = userCredential.user;
     
     // Fetch user profile from Firestore
-    const userDoc = await getDoc(doc(db, USERS_COLLECTION, email.toLowerCase())); // Use email as ID for easy lookup
+    const userDocRef = doc(db, USERS_COLLECTION, email.toLowerCase());
+    const userDoc = await getDoc(userDocRef);
     
     if (userDoc.exists()) {
       const userData = userDoc.data() as User;
       // Update UID in firestore to match Auth UID if it was a pre-created invite
       if (userData.uid !== firebaseUser.uid) {
-        await updateDoc(doc(db, USERS_COLLECTION, email.toLowerCase()), { uid: firebaseUser.uid });
+        await updateDoc(userDocRef, { uid: firebaseUser.uid });
       }
       return { ...userData, uid: firebaseUser.uid };
     } else {
-      throw new Error("User profile not found in database.");
+      // 🚨 AUTO-HEAL: If this is the master admin, recreate the missing doc automatically
+      if (email.toLowerCase() === 'admin@followup.com') {
+          console.log("Healing orphaned Master Admin account...");
+          const healedUser: User = {
+              uid: firebaseUser.uid,
+              name: 'Master Admin',
+              email: email.toLowerCase(),
+              role: Role.ADMIN,
+              photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=admin',
+          };
+          await setDoc(userDocRef, healedUser);
+          return healedUser;
+      }
+
+      throw new Error("User profile not found in database. Contact Admin.");
     }
   } catch (error: any) {
     console.error("Login error", error);
+    if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
+        throw new Error("Incorrect password.");
+    }
     throw new Error(error.message);
   }
 };
