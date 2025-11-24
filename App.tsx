@@ -5,7 +5,8 @@ import {
   AlertTriangle, FileWarning, ClipboardList, Settings, Camera, Pencil, Info, Shield, UserPlus,
   Percent, Activity, Sparkles, Bot, Medal, MessageSquare, Mail, Copy, Columns, List, Gauge,
   Zap, Sword, BrainCircuit, BookOpen, Save, RefreshCw, HelpCircle, LockKeyhole, Send, Minimize2, PhoneMissed,
-  Newspaper, Globe, TrendingDown, ThermometerSun, Snowflake, ArrowRight, Bell, Shuffle, AlertOctagon
+  Newspaper, Globe, TrendingDown, ThermometerSun, Snowflake, ArrowRight, Bell, Shuffle, AlertOctagon,
+  Target, Lightbulb, History, MoreHorizontal, CalendarClock
 } from 'lucide-react';
 import { format, isToday, isBefore, differenceInDays, isSameDay, isSameMonth, isSameWeek, addDays, parseISO as dateFnsParseISO } from 'date-fns';
 // @ts-ignore
@@ -71,7 +72,7 @@ const SalesCopilot: React.FC = () => {
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
+    <div className="fixed bottom-6 right-6 z-[100] flex flex-col items-end">
       {isOpen ? (
         <div className="w-80 md:w-96 bg-white border-2 border-slate-900 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.2)] overflow-hidden flex flex-col h-[500px] animate-in slide-in-from-bottom-10 duration-300">
            <div className="bg-slate-900 text-white p-4 flex justify-between items-center shrink-0">
@@ -376,7 +377,7 @@ const AuthScreen: React.FC<{ onLogin: (u: User) => void }> = ({ onLogin }) => {
   );
 };
 
-// --- LEAD DETAILS COMPONENT ---
+// --- LEAD DETAILS COMPONENT (REDESIGNED) ---
 const LeadDetailsModal: React.FC<{ lead: InteractionLog, logs: InteractionLog[], onClose: () => void, onUpdate: (id: string, updates: any) => Promise<void> }> = ({ lead, logs, onClose, onUpdate }) => {
   const [callStrategy, setCallStrategy] = useState<CallStrategy | null>(null);
   const [loadingStrategy, setLoadingStrategy] = useState(false);
@@ -406,113 +407,168 @@ const LeadDetailsModal: React.FC<{ lead: InteractionLog, logs: InteractionLog[],
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-6" onClick={onClose}>
-      <Card3D className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-b-none sm:rounded-2xl animate-in slide-in-from-bottom-10 duration-300" onClick={(e) => e.stopPropagation()} noPadding>
-          <div className="bg-slate-900 text-white p-6 sticky top-0 z-10 flex justify-between items-start">
-            <div>
-                <h2 className="text-2xl font-black">{lead.clientName}</h2>
-                <p className="text-slate-400 flex items-center gap-2"><Phone size={14}/> {lead.phone} <span className="w-1 h-1 rounded-full bg-slate-600"></span> {lead.leadStatus}</p>
-            </div>
-            <button onClick={onClose} className="p-1 bg-slate-800 rounded hover:bg-slate-700"><X/></button>
-          </div>
-
-          <div className="p-6 space-y-6">
-            <div className="bg-gradient-to-br from-indigo-50 to-white border-2 border-indigo-100 rounded-xl p-5 relative overflow-hidden shadow-sm">
-                <div className="absolute top-0 right-0 p-3 opacity-5"><BrainCircuit size={80} className="text-indigo-900"/></div>
-                <div className="relative z-10">
-                  <h3 className="font-black text-indigo-900 mb-3 flex items-center gap-2"><Sparkles size={18}/> Call Strategy Prep</h3>
-                  {loadingStrategy ? (
-                      <div className="animate-pulse space-y-2">
-                        <div className="h-4 bg-indigo-200 rounded w-3/4"></div>
-                        <div className="h-4 bg-indigo-200 rounded w-1/2"></div>
-                      </div>
-                  ) : callStrategy ? (
-                      <div className="space-y-4">
-                        <div className="bg-white/80 p-3 rounded-lg border border-indigo-50">
-                            <p className="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-1">Situation Recap</p>
-                            <p className="text-slate-800 font-medium text-sm">{callStrategy.situationSummary}</p>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div className="bg-white/80 p-3 rounded-lg border border-indigo-50">
-                              <p className="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-1">Talking Points</p>
-                              <ul className="list-disc ml-4 text-sm text-slate-700 space-y-1">
-                                  {callStrategy.talkingPoints.map((tp, i) => <li key={i}>{tp}</li>)}
-                              </ul>
-                            </div>
-                            <div className="bg-white/80 p-3 rounded-lg border border-indigo-50">
-                              <p className="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-1">Psychological Vibe</p>
-                              <p className="text-slate-800 font-bold text-lg">{callStrategy.psychologicalVibe}</p>
-                            </div>
-                        </div>
-                      </div>
-                  ) : <p>Strategy unavailable.</p>}
-                </div>
-            </div>
-
-            <div>
-                <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2"><List size={18}/> Interaction History</h3>
-                <div className="space-y-0 relative border-l-2 border-slate-200 ml-3 pl-6 pb-2 max-h-40 overflow-y-auto custom-scrollbar">
-                  {logs.filter(l => l.phone === lead.phone).sort((a,b) => b.createdAt - a.createdAt).map((log, idx) => (
-                      <div key={log.id} className="mb-6 relative">
-                        <div className={`absolute -left-[31px] top-0 w-4 h-4 rounded-full border-2 border-white shadow-sm ${idx===0 ? 'bg-indigo-600' : 'bg-slate-300'}`}></div>
-                        <div className="bg-white border border-slate-200 p-4 rounded-xl shadow-sm">
-                            <div className="flex justify-between items-start mb-2">
-                              <span className="font-bold text-sm bg-slate-100 px-2 py-1 rounded text-slate-600">{log.leadStatus}</span>
-                              <span className="text-xs text-slate-400 font-medium">{log.followUpDate}</span>
-                            </div>
-                            <p className="text-slate-700 text-sm leading-relaxed">{log.description}</p>
-                            <p className="text-xs text-slate-400 mt-2 font-bold uppercase tracking-wider">{log.agentName}</p>
-                        </div>
-                      </div>
-                  ))}
-                </div>
-            </div>
-
-            <div className="border-t-2 border-slate-100 pt-6">
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                    <Button3D variant="success" icon={CheckCircle2} onClick={() => { onUpdate(lead.id, { leadStatus: LeadStatus.PAID, isCompleted: true }); onClose(); confetti(); }}>Mark PAID</Button3D>
-                    <Button3D variant="danger" icon={X} onClick={() => { onUpdate(lead.id, { leadStatus: LeadStatus.NOT_INTERESTED, isCompleted: true }); onClose(); }}>Not Interested</Button3D>
-                    <Button3D variant="secondary" icon={Megaphone} onClick={() => { onUpdate(lead.id, { leadStatus: LeadStatus.SECOND_VOICE, secondVoiceRequested: true }); onClose(); }}>Request 2nd Voice</Button3D>
-                    <Button3D variant="secondary" icon={PhoneMissed} onClick={handleGenerateNoAnswer}>Client didn't pick up?</Button3D>
-                </div>
-
-                {showNoAnswerUI && (
-                  <div className="bg-amber-50 border-2 border-amber-200 rounded-xl p-4 animate-in fade-in zoom-in-95 duration-200">
-                      <h4 className="font-bold text-amber-800 mb-2 flex items-center gap-2"><MessageSquare size={16}/> No Answer Strategy</h4>
-                      
-                      {generatingDraft ? (
-                         <div className="p-4 text-center text-amber-600 font-bold animate-pulse">Analyzing history & drafting message...</div>
-                      ) : (
-                         <>
-                           <textarea 
-                              className="w-full p-3 rounded-lg border-2 border-amber-200 bg-white text-sm mb-3 focus:outline-none focus:border-amber-400"
-                              rows={3}
-                              value={noAnswerMsg}
-                              onChange={(e) => setNoAnswerMsg(e.target.value)}
-                           />
-                           <div className="flex gap-2 mb-4">
-                              <Button3D variant="primary" className="flex-1 py-2 text-sm" icon={Copy} onClick={() => { navigator.clipboard.writeText(noAnswerMsg); alert("Copied to clipboard!"); }}>Copy Message</Button3D>
-                           </div>
-
-                           <div className="flex gap-2 items-center border-t border-amber-200 pt-3">
-                              <input 
-                                type="text" 
-                                placeholder="E.g. Offer 10% discount..." 
-                                className="flex-1 bg-white border border-amber-200 rounded-lg px-3 py-2 text-sm"
-                                value={regenIntent}
-                                onChange={(e) => setRegenIntent(e.target.value)}
-                              />
-                              <button onClick={handleGenerateNoAnswer} className="text-xs font-bold bg-amber-200 text-amber-800 px-3 py-2 rounded-lg hover:bg-amber-300">
-                                Regenerate
-                              </button>
-                           </div>
-                         </>
-                      )}
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
+      <div 
+        className="w-full max-w-5xl h-[90vh] bg-white rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+          {/* HEADER */}
+          <div className="bg-slate-900 text-white p-6 shrink-0 flex justify-between items-center">
+             <div className="flex items-center gap-4">
+               <div className="w-12 h-12 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
+                  <UserIcon size={24} className="text-white"/>
+               </div>
+               <div>
+                  <h2 className="text-3xl font-black tracking-tight">{lead.clientName}</h2>
+                  <div className="flex items-center gap-3 text-slate-400 text-sm font-medium">
+                     <span className="flex items-center gap-1"><Phone size={14}/> {lead.phone}</span>
+                     <span className="w-1 h-1 bg-slate-600 rounded-full"></span>
+                     <span className={`px-2 py-0.5 rounded text-xs font-bold ${lead.leadStatus === LeadStatus.PAID ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-300'}`}>{lead.leadStatus}</span>
                   </div>
-                )}
-            </div>
+               </div>
+             </div>
+             <button onClick={onClose} className="p-2 bg-slate-800 rounded-xl hover:bg-slate-700 transition-colors"><X/></button>
           </div>
-      </Card3D>
+
+          <div className="flex-1 overflow-hidden grid grid-cols-1 md:grid-cols-12">
+            
+            {/* LEFT: HISTORY (35%) */}
+            <div className="md:col-span-4 bg-slate-50 border-r border-slate-200 flex flex-col h-full overflow-hidden">
+               <div className="p-4 border-b border-slate-200 flex items-center gap-2 bg-white sticky top-0">
+                  <History className="text-indigo-600" size={18}/>
+                  <h3 className="font-black text-slate-700 uppercase tracking-wider text-xs">Interaction Timeline</h3>
+               </div>
+               <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+                  <div className="space-y-6 relative border-l-2 border-slate-200 ml-2 pl-6">
+                    {logs.filter(l => l.phone === lead.phone).sort((a,b) => b.createdAt - a.createdAt).map((log, idx) => (
+                        <div key={log.id} className="relative">
+                          <div className={`absolute -left-[31px] top-1 w-4 h-4 rounded-full border-2 border-white shadow-sm ${idx===0 ? 'bg-indigo-600 ring-4 ring-indigo-100' : 'bg-slate-300'}`}></div>
+                          <div className="bg-white border border-slate-200 p-4 rounded-xl shadow-sm hover:shadow-md transition-shadow">
+                              <div className="flex justify-between items-start mb-2">
+                                <span className="font-bold text-xs bg-slate-100 px-2 py-1 rounded text-slate-600">{log.leadStatus}</span>
+                                <span className="text-xs text-slate-400 font-medium">{log.followUpDate}</span>
+                              </div>
+                              <p className="text-slate-700 text-sm leading-relaxed">{log.description}</p>
+                              <p className="text-xs text-slate-400 mt-3 font-bold flex items-center gap-1">
+                                <UserIcon size={10}/> {log.agentName}
+                              </p>
+                          </div>
+                        </div>
+                    ))}
+                  </div>
+               </div>
+            </div>
+
+            {/* RIGHT: STRATEGY & ACTIONS (65%) */}
+            <div className="md:col-span-8 bg-white flex flex-col h-full overflow-hidden">
+               
+               {/* STRATEGY CARD */}
+               <div className="flex-1 overflow-y-auto p-6 md:p-8 custom-scrollbar">
+                  <div className="mb-8">
+                     <h3 className="text-xl font-black text-slate-900 mb-4 flex items-center gap-2"><Target className="text-indigo-600"/> Strategic Battle Card</h3>
+                     
+                     {loadingStrategy ? (
+                         <div className="grid gap-4 animate-pulse">
+                            <div className="h-24 bg-slate-100 rounded-xl"></div>
+                            <div className="h-32 bg-slate-100 rounded-xl"></div>
+                         </div>
+                     ) : callStrategy ? (
+                         <div className="space-y-6">
+                            {/* THE STORY SO FAR */}
+                            <div className="bg-indigo-50/50 rounded-xl p-5 border border-indigo-100">
+                               <h4 className="font-bold text-indigo-900 text-sm mb-2 uppercase tracking-wide flex items-center gap-2"><BookOpen size={16}/> The Story So Far</h4>
+                               <p className="text-slate-700 leading-relaxed text-lg font-medium">"{callStrategy.situationSummary}"</p>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                               {/* WINNING MOVES */}
+                               <div>
+                                  <h4 className="font-bold text-slate-900 text-sm mb-3 uppercase tracking-wide flex items-center gap-2"><Sword size={16}/> Winning Moves</h4>
+                                  <div className="space-y-3">
+                                     {callStrategy.talkingPoints.map((tp, i) => (
+                                        <div key={i} className="bg-white border-2 border-slate-100 p-3 rounded-lg shadow-sm flex gap-3 items-start">
+                                           <div className="bg-indigo-100 text-indigo-700 w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs shrink-0 mt-0.5">{i+1}</div>
+                                           <p className="text-slate-700 text-sm font-medium">{tp}</p>
+                                        </div>
+                                     ))}
+                                  </div>
+                               </div>
+                               
+                               {/* TEMPERAMENT */}
+                               <div>
+                                  <h4 className="font-bold text-slate-900 text-sm mb-3 uppercase tracking-wide flex items-center gap-2"><ThermometerSun size={16}/> Client Temperament</h4>
+                                  <div className="bg-gradient-to-r from-slate-100 to-white border border-slate-200 p-5 rounded-xl text-center">
+                                      <p className="text-3xl font-black text-slate-800 tracking-tight">{callStrategy.psychologicalVibe}</p>
+                                      <div className="w-full bg-slate-200 h-2 rounded-full mt-3 overflow-hidden">
+                                          <div className="h-full bg-indigo-500 w-2/3"></div>
+                                      </div>
+                                  </div>
+                               </div>
+                            </div>
+                         </div>
+                     ) : (
+                         <div className="p-8 text-center text-slate-400 bg-slate-50 rounded-xl border-dashed border-2 border-slate-200">
+                            AI Strategy Unavailable
+                         </div>
+                     )}
+                  </div>
+                  
+                  {/* NO ANSWER UI (Contextual) */}
+                  {showNoAnswerUI && (
+                    <div className="mb-6 bg-amber-50 border-2 border-amber-200 rounded-2xl p-6 animate-in slide-in-from-bottom-5">
+                       <h4 className="font-bold text-amber-900 mb-3 flex items-center gap-2"><MessageSquare size={18}/> Drafted "Missed Call" Follow-up</h4>
+                       
+                       {generatingDraft ? (
+                          <div className="flex items-center gap-3 text-amber-700 font-bold p-4"><div className="animate-spin">⏳</div> Analyzing history & drafting personal message...</div>
+                       ) : (
+                          <>
+                             <div className="relative">
+                               <textarea 
+                                  className="w-full p-4 rounded-xl border border-amber-200 bg-white text-base font-medium text-slate-700 shadow-inner focus:ring-2 focus:ring-amber-400 focus:outline-none resize-none"
+                                  rows={3}
+                                  value={noAnswerMsg}
+                                  onChange={(e) => setNoAnswerMsg(e.target.value)}
+                               />
+                               <button 
+                                 className="absolute right-2 bottom-2 bg-amber-100 hover:bg-amber-200 text-amber-800 px-3 py-1 rounded-lg text-xs font-bold transition-colors"
+                                 onClick={() => { navigator.clipboard.writeText(noAnswerMsg); alert("Copied!"); }}
+                               >
+                                 Copy Text
+                               </button>
+                             </div>
+                             
+                             <div className="mt-3 flex gap-2">
+                                <input 
+                                  type="text" 
+                                  placeholder="Want to say something else? (e.g. 'Mention the deadline')" 
+                                  className="flex-1 bg-white border border-amber-200 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-amber-400"
+                                  value={regenIntent}
+                                  onChange={(e) => setRegenIntent(e.target.value)}
+                                />
+                                <button onClick={handleGenerateNoAnswer} className="bg-amber-200 hover:bg-amber-300 text-amber-900 px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center gap-1">
+                                   <RefreshCw size={14}/> Rewrite
+                                </button>
+                             </div>
+                          </>
+                       )}
+                    </div>
+                  )}
+
+               </div>
+
+               {/* ACTION FOOTER */}
+               <div className="p-6 border-t border-slate-100 bg-slate-50 shrink-0">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                     <Button3D variant="success" icon={CheckCircle2} onClick={() => { onUpdate(lead.id, { leadStatus: LeadStatus.PAID, isCompleted: true }); onClose(); confetti(); }}>Close Deal (Paid)</Button3D>
+                     <Button3D variant="danger" icon={X} onClick={() => { onUpdate(lead.id, { leadStatus: LeadStatus.NOT_INTERESTED, isCompleted: true }); onClose(); }}>Not Interested</Button3D>
+                     <Button3D variant="secondary" icon={Megaphone} onClick={() => { onUpdate(lead.id, { leadStatus: LeadStatus.SECOND_VOICE, secondVoiceRequested: true }); onClose(); }}>Request 2nd Voice</Button3D>
+                     <Button3D variant={showNoAnswerUI ? 'primary' : 'secondary'} icon={PhoneMissed} onClick={handleGenerateNoAnswer}>No Answer?</Button3D>
+                  </div>
+               </div>
+            </div>
+
+          </div>
+      </div>
     </div>
   );
 };
@@ -770,73 +826,79 @@ export default function FollowUpApp() {
 
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
-       <header className="bg-slate-900 text-white pt-8 pb-24 px-6 shadow-3d relative">
-         <div className="max-w-5xl mx-auto flex justify-between items-center relative z-10">
-           <div className="flex items-center gap-4">
-               {/* NOTIFICATION CENTER (TOP LEFT) */}
-               <div className="relative">
-                  <button 
-                    onClick={() => setNotificationOpen(!notificationOpen)} 
-                    className="p-3 bg-slate-800 rounded-full hover:bg-slate-700 relative"
-                  >
-                     <Bell size={24} className="text-white"/>
-                     {allNotifications.length > 0 && (
-                        <span className="absolute top-0 right-0 w-3 h-3 bg-rose-500 rounded-full border-2 border-slate-900"></span>
-                     )}
-                  </button>
-                  {notificationOpen && (
-                     <div className="absolute top-14 left-0 w-80 bg-white rounded-xl shadow-xl z-50 text-slate-900 overflow-hidden animate-in fade-in slide-in-from-top-2 border-2 border-slate-200">
-                        <div className="p-3 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
-                           <h4 className="font-bold text-sm">Notifications</h4>
-                           <span className="text-xs bg-slate-200 px-2 py-1 rounded-full font-bold">{allNotifications.length}</span>
-                        </div>
-                        <div className="max-h-80 overflow-y-auto">
-                           {allNotifications.length === 0 ? (
-                              <p className="p-4 text-center text-sm text-slate-400 font-medium">All caught up! 🎉</p>
-                           ) : (
-                              allNotifications.map((n, i) => (
-                                 <div 
-                                    key={i} 
-                                    onClick={() => { setSelectedLead(n.data); setNotificationOpen(false); }}
-                                    className={`p-3 border-b border-slate-50 hover:bg-slate-50 cursor-pointer flex gap-3 items-start ${n.type === 'Missed' ? 'bg-rose-50/50' : ''}`}
-                                 >
-                                    <div className={`mt-1 w-2 h-2 rounded-full shrink-0 ${n.type === 'Missed' ? 'bg-rose-500' : n.type === 'Hot' ? 'bg-emerald-500' : 'bg-indigo-500'}`}></div>
-                                    <div>
-                                       <p className="font-bold text-sm">{n.data.clientName}</p>
-                                       <p className="text-xs text-slate-500">{n.type === 'Missed' ? `Missed: ${n.data.followUpDate}` : n.type === 'Hot' ? 'Hot Lead Detected' : 'Task for Today'}</p>
-                                    </div>
-                                 </div>
-                              ))
-                           )}
-                        </div>
-                     </div>
+       {/* HEADER - FIXED Z-INDEX LAYERING FOR NOTIFICATIONS */}
+       <div className="relative z-50">
+           <header className="bg-slate-900 text-white pt-8 pb-24 px-6 shadow-3d relative">
+             <div className="max-w-5xl mx-auto flex justify-between items-center relative z-20">
+               <div className="flex items-center gap-4">
+                   {/* NOTIFICATION CENTER (TOP LEFT) */}
+                   <div className="relative">
+                      <button 
+                        onClick={() => setNotificationOpen(!notificationOpen)} 
+                        className="p-3 bg-slate-800 rounded-full hover:bg-slate-700 relative transition-all active:scale-95"
+                      >
+                         <Bell size={24} className="text-white"/>
+                         {allNotifications.length > 0 && (
+                            <span className="absolute top-0 right-0 w-3 h-3 bg-rose-500 rounded-full border-2 border-slate-900 animate-pulse"></span>
+                         )}
+                      </button>
+                      {notificationOpen && (
+                         <div className="absolute top-14 left-0 w-80 bg-white rounded-xl shadow-2xl ring-1 ring-slate-200 z-[100] text-slate-900 overflow-hidden animate-in fade-in slide-in-from-top-2">
+                            <div className="p-3 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+                               <h4 className="font-bold text-sm text-slate-700">Notifications</h4>
+                               <span className="text-xs bg-slate-200 px-2 py-1 rounded-full font-bold">{allNotifications.length}</span>
+                            </div>
+                            <div className="max-h-80 overflow-y-auto">
+                               {allNotifications.length === 0 ? (
+                                  <p className="p-8 text-center text-sm text-slate-400 font-medium">All caught up! 🎉</p>
+                               ) : (
+                                  allNotifications.map((n, i) => (
+                                     <div 
+                                        key={i} 
+                                        onClick={() => { setSelectedLead(n.data); setNotificationOpen(false); }}
+                                        className={`p-4 border-b border-slate-50 hover:bg-slate-50 cursor-pointer flex gap-3 items-start ${n.type === 'Missed' ? 'bg-rose-50/50' : ''}`}
+                                     >
+                                        <div className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${n.type === 'Missed' ? 'bg-rose-500' : n.type === 'Hot' ? 'bg-emerald-500' : 'bg-indigo-500'}`}></div>
+                                        <div>
+                                           <p className="font-bold text-sm text-slate-800">{n.data.clientName}</p>
+                                           <p className="text-xs text-slate-500 font-medium mt-0.5">{n.type === 'Missed' ? `Missed: ${n.data.followUpDate}` : n.type === 'Hot' ? '🔥 Hot Lead Detected' : '📅 Scheduled Today'}</p>
+                                        </div>
+                                     </div>
+                                  ))
+                               )}
+                            </div>
+                         </div>
+                      )}
+                   </div>
+
+                   {/* PROFILE */}
+                   <div className="flex items-center gap-4 cursor-pointer group" onClick={() => setProfileModalOpen(true)}>
+                      <img src={user.photoURL} className="w-14 h-14 rounded-full border-2 border-indigo-400 bg-slate-800 object-cover group-hover:scale-105 transition-transform" />
+                      <div>
+                         <h1 className="text-2xl font-black tracking-tight">Follow Up</h1>
+                         <p className="text-slate-400 text-sm font-medium">{user.name} ({user.role})</p>
+                      </div>
+                   </div>
+               </div>
+               
+               <div className="flex gap-2">
+                  {missedLeads.length > 0 && <Button3D variant="danger" icon={FileWarning} onClick={() => setMissedLeadsModalOpen(true)}>{missedLeads.length}</Button3D>}
+                  {user.role === Role.ADMIN && (
+                    <>
+                      <Button3D variant="primary" icon={BrainCircuit} onClick={() => setKnowledgeModalOpen(true)}>AI Brain</Button3D>
+                      <Button3D variant="secondary" icon={Shield} onClick={() => setTeamModalOpen(true)}>Team</Button3D>
+                    </>
                   )}
+                  <Button3D variant="ghost" onClick={() => { logoutUser(); setUser(null); }}><LogOut size={20}/></Button3D>
                </div>
+             </div>
+             
+             {/* Background Decoration */}
+             <div className="absolute inset-0 bg-slate-900 z-0"></div>
+           </header>
+       </div>
 
-               {/* PROFILE */}
-               <div className="flex items-center gap-4 cursor-pointer" onClick={() => setProfileModalOpen(true)}>
-                  <img src={user.photoURL} className="w-14 h-14 rounded-full border-2 border-indigo-400 bg-slate-800 object-cover" />
-                  <div>
-                     <h1 className="text-2xl font-black">Follow Up</h1>
-                     <p className="text-slate-400 text-sm">{user.name} ({user.role})</p>
-                  </div>
-               </div>
-           </div>
-           
-           <div className="flex gap-2">
-              {missedLeads.length > 0 && <Button3D variant="danger" icon={FileWarning} onClick={() => setMissedLeadsModalOpen(true)}>{missedLeads.length}</Button3D>}
-              {user.role === Role.ADMIN && (
-                <>
-                  <Button3D variant="primary" icon={BrainCircuit} onClick={() => setKnowledgeModalOpen(true)}>AI Brain</Button3D>
-                  <Button3D variant="secondary" icon={Shield} onClick={() => setTeamModalOpen(true)}>Team</Button3D>
-                </>
-              )}
-              <Button3D variant="ghost" onClick={() => { logoutUser(); setUser(null); }}><LogOut size={20}/></Button3D>
-           </div>
-         </div>
-       </header>
-
-       <main className="max-w-5xl mx-auto px-6 -mt-16 relative z-20">
+       <main className="max-w-5xl mx-auto px-6 -mt-16 relative z-10">
           <div className="flex gap-4 mb-6 overflow-x-auto py-2 no-scrollbar">
              {[
                {id: 'home', label: 'Dashboard', icon: LayoutDashboard},
@@ -847,7 +909,7 @@ export default function FollowUpApp() {
                <button 
                  key={t.id} 
                  onClick={() => setActiveTab(t.id as any)}
-                 className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm shadow-lg transition-all ${activeTab === t.id ? 'bg-white text-slate-900 ring-2 ring-indigo-500' : 'bg-slate-800 text-slate-400'}`}
+                 className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm shadow-lg transition-all ${activeTab === t.id ? 'bg-white text-slate-900 ring-2 ring-indigo-500 translate-y-[-2px]' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
                >
                  <t.icon size={18}/> {t.label}
                </button>
@@ -855,7 +917,7 @@ export default function FollowUpApp() {
           </div>
 
           {activeTab === 'home' && (
-            <div className="space-y-8">
+            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                <Card3D className="bg-gradient-to-r from-indigo-600 to-indigo-800 text-white border-indigo-900">
                   <div className="flex gap-4 items-start">
                      <Bot size={32} className="text-indigo-200" />
@@ -940,38 +1002,87 @@ export default function FollowUpApp() {
           )}
 
           {activeTab === 'leads' && (
-            <div className="space-y-6">
+            <div className="space-y-6 animate-in fade-in duration-300">
                <div className="flex gap-4 mb-4">
                  <div className="relative flex-1">
                    <Search className="absolute left-3 top-3 text-slate-400" />
-                   <input type="text" className="w-full pl-10 pr-4 py-3 rounded-xl border-2 border-slate-200 font-bold" placeholder="Search..." value={search} onChange={e => setSearch(e.target.value)} />
+                   <input type="text" className="w-full pl-10 pr-4 py-3 rounded-xl border-2 border-slate-200 font-bold" placeholder="Search leads by name or phone..." value={search} onChange={e => setSearch(e.target.value)} />
                  </div>
-                 <select className="px-4 py-3 rounded-xl border-2 border-slate-200 font-bold bg-white" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
-                   <option value="All">All Status</option>
+                 <select className="px-4 py-3 rounded-xl border-2 border-slate-200 font-bold bg-white text-slate-700 cursor-pointer" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+                   <option value="All">All Statuses</option>
                    {Object.values(LeadStatus).map(s => <option key={s} value={s}>{s}</option>)}
                  </select>
                </div>
 
-               {filtered.map(log => (
-                  <Card3D key={log.id} onClick={() => setSelectedLead(log)} className="flex justify-between items-center">
-                     <div>
-                       <h3 className="font-bold text-lg">{log.clientName}</h3>
-                       <p className="text-sm text-slate-500">{log.phone} • {log.leadStatus}</p>
+               <div className="space-y-3">
+                  {filtered.length === 0 ? (
+                      <div className="text-center py-12 text-slate-400 font-bold bg-white rounded-2xl border-2 border-dashed border-slate-200">
+                          No leads found matching your criteria.
+                      </div>
+                  ) : filtered.map(log => (
+                     <div 
+                        key={log.id} 
+                        onClick={() => setSelectedLead(log)} 
+                        className="bg-white rounded-xl border-2 border-slate-100 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all cursor-pointer group flex flex-col md:flex-row md:items-center overflow-hidden"
+                     >
+                        {/* COLOR STRIP */}
+                        <div className={`h-2 md:h-auto md:w-2 self-stretch ${
+                            log.leadStatus === LeadStatus.PAID ? 'bg-emerald-500' :
+                            log.leadStatus === LeadStatus.NOT_INTERESTED ? 'bg-slate-300' :
+                            log.leadStatus === LeadStatus.NEW_PROSPECT ? 'bg-blue-400' :
+                            log.leadStatus === LeadStatus.SECOND_VOICE ? 'bg-purple-500' :
+                            'bg-amber-400'
+                        }`}></div>
+
+                        <div className="p-4 flex-1 grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+                            {/* INFO */}
+                            <div className="md:col-span-4">
+                                <h3 className="font-bold text-lg text-slate-900 group-hover:text-indigo-700">{log.clientName}</h3>
+                                <p className="text-slate-500 text-sm font-medium flex items-center gap-2"><Phone size={12}/> {log.phone}</p>
+                            </div>
+
+                            {/* STATUS & AGENT */}
+                            <div className="md:col-span-4 flex flex-col md:flex-row gap-3 items-start md:items-center">
+                                <span className={`px-2 py-1 rounded text-xs font-bold uppercase tracking-wider ${
+                                    log.leadStatus === LeadStatus.PAID ? 'bg-emerald-100 text-emerald-700' :
+                                    log.leadStatus === LeadStatus.NOT_INTERESTED ? 'bg-slate-100 text-slate-600' :
+                                    'bg-indigo-50 text-indigo-700'
+                                }`}>
+                                    {log.leadStatus}
+                                </span>
+                                {user.role === Role.ADMIN && (
+                                   <span className="text-xs font-bold text-slate-400 flex items-center gap-1 bg-slate-50 px-2 py-1 rounded">
+                                      <UserIcon size={10}/> {log.agentName}
+                                   </span>
+                                )}
+                            </div>
+
+                            {/* DATE & ACTIONS */}
+                            <div className="md:col-span-4 flex justify-between items-center">
+                                <div className="text-right">
+                                   <p className="text-xs text-slate-400 font-bold uppercase mb-0.5">Next Action</p>
+                                   <p className="text-sm font-bold text-slate-700 flex items-center gap-1">
+                                      {log.isCompleted ? <CheckCircle2 size={14} className="text-emerald-500"/> : <CalendarClock size={14} className="text-amber-500"/>}
+                                      {log.isCompleted ? 'Completed' : log.followUpDate || 'No Date'}
+                                   </p>
+                                </div>
+                                {user.role === Role.ADMIN && (
+                                   <div className="flex gap-1 ml-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <button onClick={(e) => { e.stopPropagation(); setAdminEditId(log.id); setPhone(log.phone); setClientName(log.clientName); setNotes(log.description); setActiveTab('home'); }} className="p-2 hover:bg-indigo-50 text-indigo-600 rounded-lg"><Pencil size={18}/></button>
+                                      <button onClick={(e) => { e.stopPropagation(); if(confirm('Delete?')) deleteLog(log.id).then(fetchLogs); }} className="p-2 hover:bg-rose-50 text-rose-500 rounded-lg"><Trash2 size={18}/></button>
+                                   </div>
+                                )}
+                            </div>
+                        </div>
                      </div>
-                     {user.role === Role.ADMIN && (
-                       <div className="flex gap-2">
-                          <button onClick={(e) => { e.stopPropagation(); setAdminEditId(log.id); setPhone(log.phone); setClientName(log.clientName); setNotes(log.description); setActiveTab('home'); }} className="p-2 hover:bg-slate-100 rounded"><Pencil size={16} className="text-slate-400"/></button>
-                          <button onClick={(e) => { e.stopPropagation(); if(confirm('Delete?')) deleteLog(log.id).then(fetchLogs); }} className="p-2 hover:bg-rose-50 rounded"><Trash2 size={16} className="text-rose-400"/></button>
-                       </div>
-                     )}
-                  </Card3D>
-               ))}
+                  ))}
+               </div>
             </div>
           )}
 
           {activeTab === 'analytics' && (
              <div className="animate-in fade-in duration-300">
-                
+                {/* ... existing analytics code ... */}
                 {/* ADMIN INSPECTOR DROPDOWN */}
                 {user.role === Role.ADMIN && (
                   <div className="mb-6 flex justify-between items-center bg-white p-4 rounded-xl border-2 border-slate-200 shadow-sm">
@@ -1083,7 +1194,6 @@ export default function FollowUpApp() {
                 {/* AGENT DEEP DIVE SECTION */}
                 <h3 className="text-xl font-black text-slate-900 mb-4 flex items-center gap-2"><ArrowRight/> Workflow Deep Dive</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                   
                    {/* HOT LEADS RADAR */}
                    <Card3D className="border-t-4 border-t-emerald-500">
                       <h4 className="font-bold text-emerald-700 mb-3 flex items-center gap-2"><ThermometerSun size={18}/> Hot Radar</h4>
