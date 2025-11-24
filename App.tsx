@@ -21,7 +21,7 @@ import {
 import { 
   refineNotes, generateDailyBriefing, chatWithSalesAssistant, generateCallStrategy, 
   generateNoAnswerMessage, CallStrategy, generatePerformanceAnalysis, PerformanceAnalysis, 
-  getMarketIntel, MarketIntel, getMarketDeepDive 
+  getMarketIntel, MarketIntel, getMarketDeepDive, chatWithLeadStrategyAssistant
 } from './services/ai';
 import { Card3D, Button3D, Input3D, Select3D } from './components/UI';
 
@@ -387,6 +387,12 @@ const LeadDetailsModal: React.FC<{ lead: InteractionLog, logs: InteractionLog[],
   const [regenIntent, setRegenIntent] = useState('');
   const [generatingDraft, setGeneratingDraft] = useState(false);
 
+  // --- STRATEGY CHAT STATE ---
+  const [strategyChatMessages, setStrategyChatMessages] = useState<{role: 'user'|'ai', text: string}[]>([]);
+  const [strategyChatInput, setStrategyChatInput] = useState('');
+  const [strategyChatLoading, setStrategyChatLoading] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     const load = async () => {
       setLoadingStrategy(true);
@@ -404,6 +410,22 @@ const LeadDetailsModal: React.FC<{ lead: InteractionLog, logs: InteractionLog[],
     setNoAnswerMsg(msg);
     setGeneratingDraft(false);
     setRegenIntent('');
+  };
+
+  const handleStrategyChatSend = async () => {
+     if (!strategyChatInput.trim()) return;
+     const msg = strategyChatInput;
+     setStrategyChatInput('');
+     setStrategyChatMessages(prev => [...prev, {role: 'user', text: msg}]);
+     setStrategyChatLoading(true);
+     
+     const response = await chatWithLeadStrategyAssistant(msg, logs.filter(l => l.phone === lead.phone), lead.clientName);
+     
+     setStrategyChatMessages(prev => [...prev, {role: 'ai', text: response}]);
+     setStrategyChatLoading(false);
+     
+     // Scroll to bottom
+     setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
   };
 
   return (
@@ -505,6 +527,53 @@ const LeadDetailsModal: React.FC<{ lead: InteractionLog, logs: InteractionLog[],
                                   </div>
                                </div>
                             </div>
+
+                            {/* TACTICAL CHAT (NEW) */}
+                            <div className="mt-6 bg-slate-900 rounded-xl p-4 text-white">
+                                <div className="flex items-center gap-2 mb-4">
+                                    <MessageSquare size={18} className="text-emerald-400"/>
+                                    <h4 className="font-bold text-sm uppercase tracking-wide">Tactical Chat (Ask Specifics)</h4>
+                                </div>
+                                <div className="bg-slate-800 rounded-lg p-4 h-40 overflow-y-auto mb-3 custom-scrollbar">
+                                   {strategyChatMessages.length === 0 ? (
+                                       <p className="text-slate-500 text-xs text-center italic mt-10">Ask me anything about this lead...<br/>(e.g., "What if he says price is too high?")</p>
+                                   ) : (
+                                       <div className="space-y-3">
+                                          {strategyChatMessages.map((msg, i) => (
+                                              <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                                  <div className={`p-2 rounded-lg text-xs max-w-[85%] font-medium ${msg.role === 'user' ? 'bg-emerald-600 text-white rounded-br-none' : 'bg-white text-slate-900 rounded-bl-none'}`}>
+                                                      {msg.text}
+                                                  </div>
+                                              </div>
+                                          ))}
+                                          {strategyChatLoading && (
+                                              <div className="flex justify-start">
+                                                  <div className="bg-white/10 p-2 rounded-lg rounded-bl-none"><div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></div></div>
+                                              </div>
+                                          )}
+                                          <div ref={chatEndRef}></div>
+                                       </div>
+                                   )}
+                                </div>
+                                <div className="flex gap-2">
+                                    <input 
+                                       type="text" 
+                                       className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
+                                       placeholder="Type your tactical question..."
+                                       value={strategyChatInput}
+                                       onChange={(e) => setStrategyChatInput(e.target.value)}
+                                       onKeyDown={(e) => e.key === 'Enter' && handleStrategyChatSend()}
+                                    />
+                                    <button 
+                                      onClick={handleStrategyChatSend} 
+                                      className="bg-emerald-500 hover:bg-emerald-600 text-white px-3 rounded-lg"
+                                      disabled={strategyChatLoading || !strategyChatInput.trim()}
+                                    >
+                                       <Send size={16}/>
+                                    </button>
+                                </div>
+                            </div>
+
                          </div>
                      ) : (
                          <div className="p-8 text-center text-slate-400 bg-slate-50 rounded-xl border-dashed border-2 border-slate-200">
@@ -573,923 +642,405 @@ const LeadDetailsModal: React.FC<{ lead: InteractionLog, logs: InteractionLog[],
   );
 };
 
-
-// --- MAIN APP ---
-export default function FollowUpApp() {
-  const [user, setUser] = useState<User | null>(null);
-  const [showLeaderboard, setShowLeaderboard] = useState(true);
-  
-  const [logs, setLogs] = useState<InteractionLog[]>([]);
-  const [activeTab, setActiveTab] = useState<'home' | 'leads' | 'analytics' | 'market'>('home');
-  
-  const [dailyBriefing, setDailyBriefing] = useState('');
+// --- ADD LEAD MODAL ---
+const AddLeadModal = ({ onClose, onSave }: any) => {
+  const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const [clientName, setClientName] = useState('');
-  const [status, setStatus] = useState<LeadStatus>(LeadStatus.NEW_PROSPECT);
-  const [type, setType] = useState<CallType>(CallType.WORK);
-  const [notes, setNotes] = useState('');
-  const [followUpDate, setFollowUpDate] = useState('');
-  const [followUpTime, setFollowUpTime] = useState('');
-  const [existingLeadCheck, setExistingLeadCheck] = useState<InteractionLog | null>(null);
-  
-  const [selectedLead, setSelectedLead] = useState<InteractionLog | null>(null);
-  const [missedLeadsModalOpen, setMissedLeadsModalOpen] = useState(false);
-  const [teamModalOpen, setTeamModalOpen] = useState(false);
-  const [knowledgeModalOpen, setKnowledgeModalOpen] = useState(false);
-  const [profileModalOpen, setProfileModalOpen] = useState(false);
-  const [adminEditId, setAdminEditId] = useState<string | null>(null);
-  const [notificationOpen, setNotificationOpen] = useState(false);
+  const [desc, setDesc] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  // Admin Transfer State
-  const [assigneeEmail, setAssigneeEmail] = useState('');
-
-  const [search, setSearch] = useState('');
-  const [filterStatus, setFilterStatus] = useState('All');
-
-  const [teamMembers, setTeamMembers] = useState<User[]>([]);
-  const [newMemberEmail, setNewMemberEmail] = useState('');
-  const [newMemberName, setNewMemberName] = useState('');
-  const [newMemberRole, setNewMemberRole] = useState<Role>(Role.AGENT);
-  const [editingTeamUser, setEditingTeamUser] = useState<string | null>(null);
-
-  const [knowledge, setKnowledge] = useState<CompanyKnowledge | null>(null);
-  
-  // Analytics & Market States
-  const [selectedAgentEmail, setSelectedAgentEmail] = useState('ALL');
-  const [analysis, setAnalysis] = useState<PerformanceAnalysis | null>(null);
-  const [marketIntel, setMarketIntel] = useState<MarketIntel | null>(null);
-  const [loadingMarket, setLoadingMarket] = useState(false);
-
-  useEffect(() => {
-    const current = getCurrentUser();
-    if (current) setUser(current);
-  }, []);
-
-  const fetchLogs = useCallback(async () => {
-    if (!user) return;
-    const all = await getLogs();
-    if (user.role === Role.ADMIN) {
-      setLogs(all);
-    } else {
-      setLogs(all.filter(l => l.agentEmail.toLowerCase() === user.email.toLowerCase()));
-    }
-  }, [user]);
-
-  useEffect(() => {
-    if (user && !showLeaderboard) fetchLogs();
-  }, [user, showLeaderboard, fetchLogs]);
-
-  useEffect(() => {
-    if (user && !showLeaderboard) {
-       const today = logs.filter(l => l.followUpDate === format(new Date(), 'yyyy-MM-dd') && !l.isCompleted).length;
-       const missed = logs.filter(l => isBefore(parseISO(l.followUpDate), startOfToday()) && !l.isCompleted).length;
-       generateDailyBriefing(user.name, today, missed).then(setDailyBriefing);
-    }
-  }, [user, showLeaderboard, logs]);
-
-  // Live Duplicate Check
-  useEffect(() => {
-    const check = async () => {
-       if (phone.replace(/\D/g, '').length > 5 && !adminEditId) {
-          const exists = await checkPhoneExists(phone);
-          setExistingLeadCheck(exists);
-       } else {
-          setExistingLeadCheck(null);
-       }
-    };
-    const timeoutId = setTimeout(check, 800);
-    return () => clearTimeout(timeoutId);
-  }, [phone, adminEditId]);
-
-  // Analytics Calculation
-  const analyticsLogs = useMemo(() => {
-     if (selectedAgentEmail === 'ALL') return logs;
-     return logs.filter(l => l.agentEmail.toLowerCase() === selectedAgentEmail.toLowerCase());
-  }, [logs, selectedAgentEmail]);
-  
-  useEffect(() => {
-    if (activeTab === 'analytics' && analyticsLogs.length > 0) {
-       let agentName = "Global Team";
-       if (selectedAgentEmail !== 'ALL') {
-          const u = teamMembers.find(m => m.email.toLowerCase() === selectedAgentEmail.toLowerCase());
-          if (u) agentName = u.name;
-       } else if (user?.role !== Role.ADMIN) {
-          agentName = user?.name || 'You';
-       }
-       generatePerformanceAnalysis(analyticsLogs, agentName).then(setAnalysis);
-    }
-  }, [activeTab, analyticsLogs, selectedAgentEmail]);
-
-  const handleLoadMarket = async () => {
-    if (marketIntel) return;
-    setLoadingMarket(true);
-    const data = await getMarketIntel();
-    setMarketIntel(data);
-    setLoadingMarket(false);
-  };
-  
-  useEffect(() => {
-    if (activeTab === 'market') handleLoadMarket();
-  }, [activeTab]);
-
-  const handleSaveLog = async () => {
-    if (!phone || !clientName) return alert("Phone and Name required");
-    if (existingLeadCheck && !adminEditId) return alert(`Cannot save. Lead managed by ${existingLeadCheck.agentName}.`);
-    
-    const requiresFollowUp = [LeadStatus.NEW_PROSPECT, LeadStatus.FOLLOW_UP, LeadStatus.SECOND_VOICE].includes(status);
-    if (requiresFollowUp && (!followUpDate || !notes)) return alert("Date and Notes required for follow-ups");
-
-    // Determine payload owner
-    let finalAgentName = user!.name;
-    let finalAgentEmail = user!.email;
-
-    // If Admin is transferring
-    if (adminEditId && user?.role === Role.ADMIN && assigneeEmail) {
-        const assignedUser = teamMembers.find(m => m.email === assigneeEmail);
-        if (assignedUser) {
-            finalAgentName = assignedUser.name;
-            finalAgentEmail = assignedUser.email;
-        }
-    }
-
-    const payload = {
-        agentName: finalAgentName,
-        agentEmail: finalAgentEmail,
-        clientName,
-        phone,
-        description: notes,
-        leadStatus: status,
-        callType: type,
-        followUpDate: followUpDate || '',
-        followUpTime: followUpTime || '',
-        isCompleted: [LeadStatus.NOT_INTERESTED, LeadStatus.PAID].includes(status),
-        secondVoiceRequested: status === LeadStatus.SECOND_VOICE
-    };
-
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
     try {
-        if (adminEditId) {
-            await updateLog(adminEditId, payload);
-            setAdminEditId(null);
-            setAssigneeEmail('');
-        } else {
-            await saveLog(payload);
-            if (status === LeadStatus.PAID) confetti();
-        }
-        setPhone(''); setClientName(''); setNotes(''); setStatus(LeadStatus.NEW_PROSPECT);
-        fetchLogs();
-    } catch (e: any) {
-        alert(e.message);
+        const currentUser = getCurrentUser();
+        if(!currentUser) throw new Error("No user");
+
+        await saveLog({
+            agentName: currentUser.name,
+            agentEmail: currentUser.email,
+            clientName: name,
+            phone: phone,
+            description: desc,
+            leadStatus: LeadStatus.NEW_PROSPECT,
+            callType: CallType.WORK,
+            followUpDate: format(new Date(), 'yyyy-MM-dd'),
+            followUpTime: '09:00',
+            isCompleted: false,
+            secondVoiceRequested: false
+        });
+        onSave();
+        onClose();
+    } catch(err: any) {
+        setError(err.message);
+    } finally {
+        setLoading(false);
     }
   };
-
-  const handleRefineNotes = async () => {
-    if (!notes) return;
-    const p = await refineNotes(notes);
-    setNotes(p);
-  };
-
-  const loadTeam = async () => {
-    const t = await getAllUsers();
-    setTeamMembers(t);
-  };
-
-  useEffect(() => {
-    // Admin needs team list for dropdown in analytics even if modal closed
-    if (user?.role === Role.ADMIN) loadTeam();
-  }, [user]);
-
-  const handleAddOrUpdateUser = async () => {
-      if (!newMemberEmail || !newMemberName) return;
-      try {
-          if (editingTeamUser) {
-             await adminUpdateUser(editingTeamUser, { name: newMemberName, role: newMemberRole });
-          } else {
-             await createUser({ name: newMemberName, email: newMemberEmail, role: newMemberRole });
-          }
-          setEditingTeamUser(null);
-          setNewMemberEmail(''); setNewMemberName('');
-          loadTeam();
-      } catch (e: any) {
-          alert(e.message);
-      }
-  };
-
-  const loadKnowledge = async () => {
-      const k = await getCompanyKnowledge();
-      setKnowledge(k);
-  };
-  
-  useEffect(() => {
-      if (knowledgeModalOpen) loadKnowledge();
-  }, [knowledgeModalOpen]);
-
-  const handleUpdateLogWrapper = async (id: string, updates: any) => {
-    await updateLogStatus(id, updates);
-    fetchLogs();
-  };
-
-  // Hot Leads Logic
-  const hotLeads = useMemo(() => {
-     return analyticsLogs.filter(l => 
-        (l.leadStatus === LeadStatus.SECOND_VOICE || l.leadStatus === LeadStatus.FOLLOW_UP) &&
-        !l.isCompleted &&
-        differenceInDays(parseISO(l.followUpDate), new Date()) <= 3 &&
-        differenceInDays(parseISO(l.followUpDate), new Date()) >= -1
-     ).slice(0, 5);
-  }, [analyticsLogs]);
-
-  // Cold Leads Logic
-  const coldLeads = useMemo(() => {
-     return analyticsLogs.filter(l => 
-        l.leadStatus === LeadStatus.NEW_PROSPECT &&
-        differenceInDays(new Date(), new Date(l.createdAt)) > 5
-     ).length;
-  }, [analyticsLogs]);
-
-  if (!user) return <AuthScreen onLogin={setUser} />;
-  if (showLeaderboard) return <LeaderboardScreen onComplete={() => setShowLeaderboard(false)} />;
-
-  const filtered = logs.filter(l => 
-    (l.clientName.toLowerCase().includes(search.toLowerCase()) || l.phone.includes(search)) &&
-    (filterStatus === 'All' || l.leadStatus === filterStatus)
-  );
-  
-  const todayLogs = logs.filter(l => isToday(parseISO(l.followUpDate)) && !l.isCompleted);
-  const missedLeads = logs.filter(l => isBefore(parseISO(l.followUpDate), startOfToday()) && !l.isCompleted);
-
-  // Notifications Array
-  const allNotifications = [
-    ...missedLeads.map(l => ({ type: 'Missed', data: l, priority: 1 })),
-    ...todayLogs.map(l => ({ type: 'Today', data: l, priority: 2 })),
-    ...hotLeads.map(l => ({ type: 'Hot', data: l, priority: 3 }))
-  ].sort((a,b) => a.priority - b.priority);
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-20">
-       {/* HEADER - FIXED Z-INDEX LAYERING FOR NOTIFICATIONS */}
-       <div className="relative z-50">
-           <header className="bg-slate-900 text-white pt-8 pb-24 px-6 shadow-3d relative">
-             <div className="max-w-5xl mx-auto flex justify-between items-center relative z-20">
-               <div className="flex items-center gap-4">
-                   {/* NOTIFICATION CENTER (TOP LEFT) */}
-                   <div className="relative">
-                      <button 
-                        onClick={() => setNotificationOpen(!notificationOpen)} 
-                        className="p-3 bg-slate-800 rounded-full hover:bg-slate-700 relative transition-all active:scale-95"
-                      >
-                         <Bell size={24} className="text-white"/>
-                         {allNotifications.length > 0 && (
-                            <span className="absolute top-0 right-0 w-3 h-3 bg-rose-500 rounded-full border-2 border-slate-900 animate-pulse"></span>
-                         )}
-                      </button>
-                      {notificationOpen && (
-                         <div className="absolute top-14 left-0 w-80 bg-white rounded-xl shadow-2xl ring-1 ring-slate-200 z-[100] text-slate-900 overflow-hidden animate-in fade-in slide-in-from-top-2">
-                            <div className="p-3 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
-                               <h4 className="font-bold text-sm text-slate-700">Notifications</h4>
-                               <span className="text-xs bg-slate-200 px-2 py-1 rounded-full font-bold">{allNotifications.length}</span>
-                            </div>
-                            <div className="max-h-80 overflow-y-auto">
-                               {allNotifications.length === 0 ? (
-                                  <p className="p-8 text-center text-sm text-slate-400 font-medium">All caught up! 🎉</p>
-                               ) : (
-                                  allNotifications.map((n, i) => (
-                                     <div 
-                                        key={i} 
-                                        onClick={() => { setSelectedLead(n.data); setNotificationOpen(false); }}
-                                        className={`p-4 border-b border-slate-50 hover:bg-slate-50 cursor-pointer flex gap-3 items-start ${n.type === 'Missed' ? 'bg-rose-50/50' : ''}`}
-                                     >
-                                        <div className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${n.type === 'Missed' ? 'bg-rose-500' : n.type === 'Hot' ? 'bg-emerald-500' : 'bg-indigo-500'}`}></div>
-                                        <div>
-                                           <p className="font-bold text-sm text-slate-800">{n.data.clientName}</p>
-                                           <p className="text-xs text-slate-500 font-medium mt-0.5">{n.type === 'Missed' ? `Missed: ${n.data.followUpDate}` : n.type === 'Hot' ? '🔥 Hot Lead Detected' : '📅 Scheduled Today'}</p>
-                                        </div>
-                                     </div>
-                                  ))
-                               )}
-                            </div>
-                         </div>
-                      )}
-                   </div>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <Card3D className="w-full max-w-lg bg-white relative">
+            <button onClick={onClose} className="absolute right-4 top-4 text-slate-400 hover:text-slate-600"><X/></button>
+            <h2 className="text-2xl font-black text-slate-900 mb-6">Add New Lead</h2>
+            <form onSubmit={handleSubmit}>
+                <Input3D label="Client Name" value={name} onChange={e => setName(e.target.value)} required />
+                <Input3D label="Phone Number" value={phone} onChange={e => setPhone(e.target.value)} required />
+                <div className="mb-4">
+                    <label className="text-sm font-bold text-slate-700 mb-1 ml-1">Initial Notes</label>
+                    <textarea 
+                        className="w-full bg-white border-2 border-slate-300 rounded-xl px-4 py-3 text-slate-900 font-medium focus:outline-none focus:border-slate-900 transition-colors"
+                        rows={3}
+                        value={desc}
+                        onChange={e => setDesc(e.target.value)}
+                        required
+                    />
+                </div>
+                {error && <div className="mb-4 text-rose-600 font-bold text-sm bg-rose-50 p-2 rounded">{error}</div>}
+                <Button3D type="submit" loading={loading} className="w-full">Create Lead</Button3D>
+            </form>
+        </Card3D>
+    </div>
+  );
+}
 
-                   {/* PROFILE */}
-                   <div className="flex items-center gap-4 cursor-pointer group" onClick={() => setProfileModalOpen(true)}>
-                      <img src={user.photoURL} className="w-14 h-14 rounded-full border-2 border-indigo-400 bg-slate-800 object-cover group-hover:scale-105 transition-transform" />
-                      <div>
-                         <h1 className="text-2xl font-black tracking-tight">Follow Up</h1>
-                         <p className="text-slate-400 text-sm font-medium">{user.name} ({user.role})</p>
-                      </div>
-                   </div>
-               </div>
-               
-               <div className="flex gap-2">
-                  {missedLeads.length > 0 && <Button3D variant="danger" icon={FileWarning} onClick={() => setMissedLeadsModalOpen(true)}>{missedLeads.length}</Button3D>}
-                  {user.role === Role.ADMIN && (
-                    <>
-                      <Button3D variant="primary" icon={BrainCircuit} onClick={() => setKnowledgeModalOpen(true)}>AI Brain</Button3D>
-                      <Button3D variant="secondary" icon={Shield} onClick={() => setTeamModalOpen(true)}>Team</Button3D>
-                    </>
-                  )}
-                  <Button3D variant="ghost" onClick={() => { logoutUser(); setUser(null); }}><LogOut size={20}/></Button3D>
-               </div>
+// --- MAIN APP COMPONENT ---
+const App: React.FC = () => {
+  const [user, setUser] = useState<User | null>(null);
+  const [view, setView] = useState('dashboard');
+  const [logs, setLogs] = useState<InteractionLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [selectedLead, setSelectedLead] = useState<InteractionLog | null>(null);
+  
+  // Dashboard specific
+  const [briefing, setBriefing] = useState('');
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [filter, setFilter] = useState<'all'|'today'>('all');
+
+  // Market specific
+  const [marketData, setMarketData] = useState<MarketIntel | null>(null);
+  const [loadingMarket, setLoadingMarket] = useState(false);
+
+  // Knowledge specific
+  const [knowledge, setKnowledge] = useState<CompanyKnowledge | null>(null);
+  const [editingKnowledge, setEditingKnowledge] = useState(false);
+
+  // Analytics specific
+  const [analytics, setAnalytics] = useState<PerformanceAnalysis | null>(null);
+  const [loadingAnalytics, setLoadingAnalytics] = useState(false);
+
+  // Admin specific
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [isAddUserOpen, setIsAddUserOpen] = useState(false);
+
+  const refreshLogs = async () => {
+    const data = await getLogs();
+    setLogs(data);
+  };
+
+  useEffect(() => {
+    const init = async () => {
+      const u = getCurrentUser();
+      if (u) {
+        setUser(u);
+        const data = await getLogs();
+        setLogs(data);
+        setShowLeaderboard(true);
+        
+        // Load briefing
+        const todayCount = data.filter(l => l.agentEmail === u.email && isToday(new Date(l.followUpDate))).length;
+        const msg = await generateDailyBriefing(u.name, todayCount, 0);
+        setBriefing(msg);
+      }
+      setLoading(false);
+    };
+    init();
+  }, []);
+
+  // View Handlers
+  const handleViewChange = async (v: string) => {
+    setView(v);
+    if (v === 'market' && !marketData) {
+        setLoadingMarket(true);
+        const m = await getMarketIntel();
+        setMarketData(m);
+        setLoadingMarket(false);
+    }
+    if (v === 'knowledge' && !knowledge) {
+        const k = await getCompanyKnowledge();
+        setKnowledge(k);
+    }
+    if (v === 'analytics' && user) {
+        setLoadingAnalytics(true);
+        const a = await generatePerformanceAnalysis(logs.filter(l => l.agentEmail === user.email), user.name);
+        setAnalytics(a);
+        setLoadingAnalytics(false);
+    }
+    if (v === 'admin' && user?.role === Role.ADMIN) {
+        const u = await getAllUsers();
+        setAllUsers(u);
+    }
+  };
+
+  const handleLogout = () => {
+    logoutUser();
+    setUser(null);
+    setShowLeaderboard(false);
+  };
+
+  const handleUpdateLog = async (id: string, updates: Partial<InteractionLog>) => {
+    await updateLogStatus(id, updates);
+    await refreshLogs();
+  };
+
+  if (loading) return <div className="min-h-screen bg-slate-100 flex items-center justify-center font-bold text-slate-400">Loading App...</div>;
+
+  if (!user) return <AuthScreen onLogin={(u) => { setUser(u); refreshLogs(); setShowLeaderboard(true); }} />;
+
+  if (showLeaderboard) return <LeaderboardScreen onComplete={() => setShowLeaderboard(false)} />;
+
+  return (
+    <div className="flex h-screen bg-slate-100 font-sans text-slate-900 overflow-hidden">
+       {/* SIDEBAR */}
+       <div className="w-20 md:w-64 bg-slate-900 text-white flex flex-col shrink-0 transition-all">
+          <div className="p-6 flex items-center gap-3">
+             <div className="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center shrink-0">
+               <Phone className="text-white" size={16}/>
              </div>
-             
-             {/* Background Decoration */}
-             <div className="absolute inset-0 bg-slate-900 z-0"></div>
-           </header>
+             <span className="font-black text-lg tracking-tight hidden md:inline">Follow Up</span>
+          </div>
+          
+          <nav className="flex-1 px-4 space-y-2">
+             {[
+               { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+               { id: 'analytics', icon: BarChart3, label: 'My Performance' },
+               { id: 'market', icon: Globe, label: 'Market Intel' },
+               { id: 'knowledge', icon: BookOpen, label: 'Knowledge Base' },
+             ].map(item => (
+                <button 
+                  key={item.id}
+                  onClick={() => handleViewChange(item.id)}
+                  className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${view === item.id ? 'bg-indigo-600 shadow-lg text-white font-bold' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
+                >
+                   <item.icon size={20} />
+                   <span className="hidden md:inline font-medium">{item.label}</span>
+                </button>
+             ))}
+
+             {user.role === Role.ADMIN && (
+                <button 
+                  onClick={() => handleViewChange('admin')}
+                  className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all ${view === 'admin' ? 'bg-indigo-600 shadow-lg text-white font-bold' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
+                >
+                   <Users size={20} />
+                   <span className="hidden md:inline font-medium">Admin Panel</span>
+                </button>
+             )}
+          </nav>
+
+          <div className="p-4 border-t border-slate-800">
+             <button onClick={handleLogout} className="w-full flex items-center gap-3 p-3 text-rose-400 hover:bg-slate-800 rounded-xl transition-colors">
+                <LogOut size={20} />
+                <span className="hidden md:inline font-bold">Logout</span>
+             </button>
+          </div>
        </div>
 
-       <main className="max-w-5xl mx-auto px-6 -mt-16 relative z-10">
-          <div className="flex gap-4 mb-6 overflow-x-auto py-2 no-scrollbar">
-             {[
-               {id: 'home', label: 'Dashboard', icon: LayoutDashboard},
-               {id: 'leads', label: 'All Leads', icon: Users},
-               {id: 'analytics', label: 'Analytics', icon: BarChart3},
-               {id: 'market', label: 'Market Intel', icon: Globe}
-             ].map(t => (
-               <button 
-                 key={t.id} 
-                 onClick={() => setActiveTab(t.id as any)}
-                 className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm shadow-lg transition-all ${activeTab === t.id ? 'bg-white text-slate-900 ring-2 ring-indigo-500 translate-y-[-2px]' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
-               >
-                 <t.icon size={18}/> {t.label}
-               </button>
-             ))}
-          </div>
-
-          {activeTab === 'home' && (
-            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-               <Card3D className="bg-gradient-to-r from-indigo-600 to-indigo-800 text-white border-indigo-900">
-                  <div className="flex gap-4 items-start">
-                     <Bot size={32} className="text-indigo-200" />
-                     <div>
-                       <h3 className="font-bold text-lg mb-1">Daily Briefing</h3>
-                       <p className="text-indigo-100 text-sm leading-relaxed">{dailyBriefing || "Loading insights..."}</p>
-                     </div>
-                  </div>
-               </Card3D>
-
-               <section>
-                 <h2 className="text-xl font-black text-slate-900 mb-4 flex items-center gap-2"><Clock className="text-indigo-600"/> Today's Focus</h2>
-                 <div className="flex gap-4 overflow-x-auto py-4 -mx-2 px-2 no-scrollbar">
-                    {todayLogs.map(log => (
-                       <Card3D key={log.id} className="min-w-[280px] border-l-8 border-l-indigo-500" onClick={() => setSelectedLead(log)}>
-                          <h3 className="font-bold text-lg">{log.clientName}</h3>
-                          <p className="text-sm text-slate-500">{log.followUpTime} • {log.phone}</p>
-                       </Card3D>
-                    ))}
-                    {todayLogs.length === 0 && <div className="w-full p-8 text-center border-2 border-dashed border-slate-300 rounded-xl text-slate-400 font-bold">All Clear!</div>}
-                 </div>
-               </section>
-
-               <Card3D className="border-t-8 border-t-emerald-500">
-                  <h2 className="text-xl font-black text-slate-900 mb-4 flex items-center gap-2"><PlusCircle className="text-emerald-600"/> Lead Entry {adminEditId && <span className="text-xs bg-amber-100 text-amber-600 px-2 py-1 rounded">EDIT MODE</span>}</h2>
-                  
-                  {/* LIVE PHONE CHECK WARNING */}
-                  {existingLeadCheck && !adminEditId && (
-                     <div className="mb-4 bg-rose-50 border-l-4 border-rose-500 p-3 rounded-r-xl animate-in slide-in-from-left-2">
-                        <div className="flex items-center gap-2 text-rose-800 font-bold">
-                           <AlertOctagon size={20}/>
-                           Duplicate Lead Detected!
-                        </div>
-                        <p className="text-sm text-rose-700 mt-1">
-                           This phone number is already managed by <span className="font-black underline">{existingLeadCheck.agentName}</span>.
-                        </p>
-                        <p className="text-xs text-rose-600 mt-1">Please contact Admin to transfer.</p>
-                     </div>
-                  )}
-
-                  {/* ADMIN LEAD TRANSFER DROPDOWN (Only visible in edit mode for admin) */}
-                  {user.role === Role.ADMIN && adminEditId && (
-                    <div className="mb-4 bg-indigo-50 p-3 rounded-xl border border-indigo-200">
-                         <div className="flex items-center gap-2 mb-2">
-                             <Shuffle size={16} className="text-indigo-600"/>
-                             <label className="text-sm font-bold text-indigo-900">Transfer/Assign Agent</label>
-                         </div>
-                         <select 
-                            className="w-full p-2 rounded-lg border border-indigo-300 font-bold text-sm"
-                            value={assigneeEmail}
-                            onChange={(e) => setAssigneeEmail(e.target.value)}
-                         >
-                            <option value="">-- Keep Current Owner --</option>
-                            {teamMembers.map(m => <option key={m.email} value={m.email}>{m.name} ({m.email})</option>)}
-                         </select>
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                     <Input3D label="Phone" value={phone} onChange={e => setPhone(e.target.value)} />
-                     <Input3D label="Name" value={clientName} onChange={e => setClientName(e.target.value)} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                     <Select3D label="Stage" options={Object.values(LeadStatus).map(s => ({label:s, value:s}))} value={status} onChange={e => setStatus(e.target.value as any)} />
-                     <Select3D label="Type" options={Object.values(CallType).map(s => ({label:s, value:s}))} value={type} onChange={e => setType(e.target.value as any)} />
-                  </div>
-                  <div className="mb-4">
-                     <label className="text-sm font-bold text-slate-700 flex justify-between">Notes <button onClick={handleRefineNotes} className="text-indigo-600 text-xs flex items-center gap-1"><Sparkles size={10}/> AI Polish</button></label>
-                     <textarea className="w-full border-2 border-slate-300 rounded-xl p-3 h-20" value={notes} onChange={e => setNotes(e.target.value)} />
-                  </div>
-                  {[LeadStatus.NEW_PROSPECT, LeadStatus.FOLLOW_UP, LeadStatus.SECOND_VOICE].includes(status) && (
-                    <div className="grid grid-cols-2 gap-4 mb-6 bg-slate-50 p-3 rounded-xl border-2 border-slate-100">
-                       <Input3D type="date" label="Next Date" value={followUpDate} onChange={e => setFollowUpDate(e.target.value)} className="mb-0" />
-                       <Input3D type="time" label="Time" value={followUpTime} onChange={e => setFollowUpTime(e.target.value)} className="mb-0" />
-                    </div>
-                  )}
-                  <Button3D className="w-full" onClick={handleSaveLog} disabled={!!existingLeadCheck && !adminEditId}>
-                    {adminEditId ? "Update Lead" : existingLeadCheck ? "Duplicate Locked" : "Save Lead"}
-                  </Button3D>
-               </Card3D>
-            </div>
-          )}
-
-          {activeTab === 'leads' && (
-            <div className="space-y-6 animate-in fade-in duration-300">
-               <div className="flex gap-4 mb-4">
-                 <div className="relative flex-1">
-                   <Search className="absolute left-3 top-3 text-slate-400" />
-                   <input type="text" className="w-full pl-10 pr-4 py-3 rounded-xl border-2 border-slate-200 font-bold" placeholder="Search leads by name or phone..." value={search} onChange={e => setSearch(e.target.value)} />
-                 </div>
-                 <select className="px-4 py-3 rounded-xl border-2 border-slate-200 font-bold bg-white text-slate-700 cursor-pointer" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
-                   <option value="All">All Statuses</option>
-                   {Object.values(LeadStatus).map(s => <option key={s} value={s}>{s}</option>)}
-                 </select>
-               </div>
-
-               <div className="space-y-3">
-                  {filtered.length === 0 ? (
-                      <div className="text-center py-12 text-slate-400 font-bold bg-white rounded-2xl border-2 border-dashed border-slate-200">
-                          No leads found matching your criteria.
-                      </div>
-                  ) : filtered.map(log => (
-                     <div 
-                        key={log.id} 
-                        onClick={() => setSelectedLead(log)} 
-                        className="bg-white rounded-xl border-2 border-slate-100 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all cursor-pointer group flex flex-col md:flex-row md:items-center overflow-hidden"
-                     >
-                        {/* COLOR STRIP */}
-                        <div className={`h-2 md:h-auto md:w-2 self-stretch ${
-                            log.leadStatus === LeadStatus.PAID ? 'bg-emerald-500' :
-                            log.leadStatus === LeadStatus.NOT_INTERESTED ? 'bg-slate-300' :
-                            log.leadStatus === LeadStatus.NEW_PROSPECT ? 'bg-blue-400' :
-                            log.leadStatus === LeadStatus.SECOND_VOICE ? 'bg-purple-500' :
-                            'bg-amber-400'
-                        }`}></div>
-
-                        <div className="p-4 flex-1 grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
-                            {/* INFO */}
-                            <div className="md:col-span-4">
-                                <h3 className="font-bold text-lg text-slate-900 group-hover:text-indigo-700">{log.clientName}</h3>
-                                <p className="text-slate-500 text-sm font-medium flex items-center gap-2"><Phone size={12}/> {log.phone}</p>
-                            </div>
-
-                            {/* STATUS & AGENT */}
-                            <div className="md:col-span-4 flex flex-col md:flex-row gap-3 items-start md:items-center">
-                                <span className={`px-2 py-1 rounded text-xs font-bold uppercase tracking-wider ${
-                                    log.leadStatus === LeadStatus.PAID ? 'bg-emerald-100 text-emerald-700' :
-                                    log.leadStatus === LeadStatus.NOT_INTERESTED ? 'bg-slate-100 text-slate-600' :
-                                    'bg-indigo-50 text-indigo-700'
-                                }`}>
-                                    {log.leadStatus}
-                                </span>
-                                {user.role === Role.ADMIN && (
-                                   <span className="text-xs font-bold text-slate-400 flex items-center gap-1 bg-slate-50 px-2 py-1 rounded">
-                                      <UserIcon size={10}/> {log.agentName}
-                                   </span>
-                                )}
-                            </div>
-
-                            {/* DATE & ACTIONS */}
-                            <div className="md:col-span-4 flex justify-between items-center">
-                                <div className="text-right">
-                                   <p className="text-xs text-slate-400 font-bold uppercase mb-0.5">Next Action</p>
-                                   <p className="text-sm font-bold text-slate-700 flex items-center gap-1">
-                                      {log.isCompleted ? <CheckCircle2 size={14} className="text-emerald-500"/> : <CalendarClock size={14} className="text-amber-500"/>}
-                                      {log.isCompleted ? 'Completed' : log.followUpDate || 'No Date'}
-                                   </p>
-                                </div>
-                                {user.role === Role.ADMIN && (
-                                   <div className="flex gap-1 ml-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                                      <button onClick={(e) => { e.stopPropagation(); setAdminEditId(log.id); setPhone(log.phone); setClientName(log.clientName); setNotes(log.description); setActiveTab('home'); }} className="p-2 hover:bg-indigo-50 text-indigo-600 rounded-lg"><Pencil size={18}/></button>
-                                      <button onClick={(e) => { e.stopPropagation(); if(confirm('Delete?')) deleteLog(log.id).then(fetchLogs); }} className="p-2 hover:bg-rose-50 text-rose-500 rounded-lg"><Trash2 size={18}/></button>
-                                   </div>
-                                )}
-                            </div>
-                        </div>
-                     </div>
-                  ))}
-               </div>
-            </div>
-          )}
-
-          {activeTab === 'analytics' && (
-             <div className="animate-in fade-in duration-300">
-                {/* ... existing analytics code ... */}
-                {/* ADMIN INSPECTOR DROPDOWN */}
-                {user.role === Role.ADMIN && (
-                  <div className="mb-6 flex justify-between items-center bg-white p-4 rounded-xl border-2 border-slate-200 shadow-sm">
-                     <div className="flex items-center gap-2">
-                        <Shield className="text-indigo-600"/>
-                        <span className="font-bold text-slate-700">Inspector Mode:</span>
-                     </div>
-                     <select 
-                       className="bg-slate-100 border-2 border-slate-200 text-slate-900 font-bold px-4 py-2 rounded-lg focus:outline-none focus:border-indigo-500"
-                       value={selectedAgentEmail}
-                       onChange={e => setSelectedAgentEmail(e.target.value)}
-                     >
-                        <option value="ALL">Global Team Overview</option>
-                        {teamMembers.map(m => <option key={m.email} value={m.email}>{m.name}</option>)}
-                     </select>
-                  </div>
-                )}
-
-                {/* DASHBOARD */}
-                <Card3D className="bg-slate-900 border-slate-950 text-white mb-6 p-8 relative overflow-hidden">
-                  <div className="flex flex-col md:flex-row gap-8 items-center relative z-10">
-                     {/* HEALTH GAUGE */}
-                     <div className="relative w-40 h-24 flex items-end justify-center shrink-0">
-                        <div className="absolute w-40 h-20 bg-slate-800 rounded-t-full top-0 overflow-hidden">
-                          <div className="w-full h-full origin-bottom transition-all duration-1000 ease-out" 
-                               style={{ transform: `rotate(${(analysis?.healthScore || 0) * 1.8 - 180}deg)`, background: 'conic-gradient(from 180deg, #ef4444 0deg, #eab308 90deg, #22c55e 180deg)' }}></div>
-                        </div>
-                        <div className="absolute w-32 h-16 bg-slate-900 rounded-t-full bottom-0 flex items-end justify-center pb-2">
-                           <span className="text-3xl font-black">{analysis?.healthScore || 0}</span>
-                        </div>
-                        <p className="absolute -bottom-8 text-xs font-bold text-slate-400 uppercase">Health Score</p>
-                     </div>
-
-                     {/* AI COACH TEXT */}
-                     <div className="flex-1">
-                        <h3 className="flex items-center gap-2 font-bold text-indigo-400 mb-2">
-                            <Bot size={16}/> 
-                            {selectedAgentEmail === 'ALL' ? 'Team Performance Coach' : 'Agent Performance Review'}
-                        </h3>
-                        <p className="text-slate-300 text-sm leading-relaxed italic">"{analysis?.review || 'Analyzing workflow data...'}"</p>
-                        
-                        <div className="flex gap-4 mt-4">
-                           <div className="text-xs">
-                             <p className="font-bold text-emerald-400 mb-1">Strengths</p>
-                             {analysis?.strengths.map(s => <p key={s} className="text-slate-400">• {s}</p>)}
-                           </div>
-                           <div className="text-xs">
-                             <p className="font-bold text-rose-400 mb-1">Weaknesses</p>
-                             {analysis?.weaknesses.map(w => <p key={w} className="text-slate-400">• {w}</p>)}
-                           </div>
-                        </div>
-                     </div>
-                  </div>
-                </Card3D>
-
-                {/* FUNNEL & METRICS */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                   <Card3D className="bg-white">
-                      <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2"><Filter size={18}/> Conversion Funnel</h3>
-                      <div className="space-y-2">
-                         <div className="bg-slate-100 p-3 rounded-lg flex justify-between items-center relative overflow-hidden">
-                            <div className="absolute left-0 top-0 h-full bg-slate-200" style={{width: '100%'}}></div>
-                            <span className="relative z-10 font-bold text-sm text-slate-600">Total Leads</span>
-                            <span className="relative z-10 font-black">{analyticsLogs.length}</span>
-                         </div>
-                         <div className="bg-slate-100 p-3 rounded-lg flex justify-between items-center relative overflow-hidden mx-4">
-                            <div className="absolute left-0 top-0 h-full bg-indigo-200" style={{width: `${(analyticsLogs.filter(l => l.leadStatus !== LeadStatus.NEW_PROSPECT).length / (analyticsLogs.length || 1)) * 100}%`}}></div>
-                            <span className="relative z-10 font-bold text-sm text-indigo-800">Engaged</span>
-                            <span className="relative z-10 font-black text-indigo-900">{analyticsLogs.filter(l => l.leadStatus !== LeadStatus.NEW_PROSPECT).length}</span>
-                         </div>
-                         <div className="bg-slate-100 p-3 rounded-lg flex justify-between items-center relative overflow-hidden mx-8">
-                            <div className="absolute left-0 top-0 h-full bg-emerald-300" style={{width: `${(analyticsLogs.filter(l => l.leadStatus === LeadStatus.PAID).length / (analyticsLogs.length || 1)) * 100}%`}}></div>
-                            <span className="relative z-10 font-bold text-sm text-emerald-800">PAID</span>
-                            <span className="relative z-10 font-black text-emerald-900">{analyticsLogs.filter(l => l.leadStatus === LeadStatus.PAID).length}</span>
-                         </div>
-                      </div>
-                   </Card3D>
-                   
-                   <div className="grid grid-rows-2 grid-cols-2 gap-4">
-                      {/* REAL METRICS NOW */}
-                      <Card3D className="bg-emerald-50 border-emerald-200 p-3 flex flex-col justify-center">
-                         <p className="text-xs font-bold text-emerald-600 uppercase">Conversion Rate</p>
-                         <p className="text-2xl font-black text-emerald-800">
-                           {analyticsLogs.length > 0 ? Math.round((analyticsLogs.filter(l => l.leadStatus === LeadStatus.PAID).length / analyticsLogs.length) * 100) : 0}%
-                         </p>
-                      </Card3D>
-                      <Card3D className="bg-indigo-50 border-indigo-200 p-3 flex flex-col justify-center">
-                         <p className="text-xs font-bold text-indigo-600 uppercase">Pipeline Vol</p>
-                         <p className="text-2xl font-black text-indigo-800">
-                           {analyticsLogs.filter(l => [LeadStatus.NEW_PROSPECT, LeadStatus.FOLLOW_UP, LeadStatus.SECOND_VOICE].includes(l.leadStatus)).length}
-                         </p>
-                      </Card3D>
-                      <Card3D className="bg-rose-50 border-rose-200 p-3 flex flex-col justify-center">
-                         <p className="text-xs font-bold text-rose-600 uppercase">Lost Opp.</p>
-                         <p className="text-2xl font-black text-rose-800">
-                           {analyticsLogs.length > 0 ? Math.round((analyticsLogs.filter(l => l.leadStatus === LeadStatus.NOT_INTERESTED).length / analyticsLogs.length) * 100) : 0}%
-                         </p>
-                      </Card3D>
-                       <Card3D className="bg-amber-50 border-amber-200 p-3 flex flex-col justify-center">
-                         <p className="text-xs font-bold text-amber-600 uppercase">Money on Table</p>
-                         <p className="text-2xl font-black text-amber-800">
-                            {analyticsLogs.filter(l => l.leadStatus === LeadStatus.NEW_PROSPECT && differenceInDays(new Date(), new Date(l.createdAt)) > 3).length}
-                            <span className="text-xs font-medium text-amber-600 ml-1">stalled</span>
-                         </p>
-                      </Card3D>
+       {/* MAIN CONTENT */}
+       <div className="flex-1 flex flex-col h-full overflow-hidden relative">
+          
+          {/* DASHBOARD VIEW */}
+          {view === 'dashboard' && (
+             <div className="flex-1 overflow-y-auto p-6 md:p-10 custom-scrollbar">
+                <header className="mb-8 flex justify-between items-end">
+                   <div>
+                      <h1 className="text-3xl font-black text-slate-900 mb-2">Hello, {user.name.split(' ')[0]} 👋</h1>
+                      <p className="text-slate-500 font-medium max-w-2xl">{briefing || "Ready to crush some sales targets?"}</p>
                    </div>
+                   <Button3D icon={PlusCircle} onClick={() => setIsAddModalOpen(true)}>Add Lead</Button3D>
+                </header>
+
+                <div className="mb-6 flex gap-2 border-b border-slate-200 pb-1">
+                   <button onClick={() => setFilter('all')} className={`pb-2 px-2 font-bold text-sm ${filter==='all' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-400'}`}>All Leads</button>
+                   <button onClick={() => setFilter('today')} className={`pb-2 px-2 font-bold text-sm ${filter==='today' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-400'}`}>Today's Tasks</button>
                 </div>
 
-                {/* AGENT DEEP DIVE SECTION */}
-                <h3 className="text-xl font-black text-slate-900 mb-4 flex items-center gap-2"><ArrowRight/> Workflow Deep Dive</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                   {/* HOT LEADS RADAR */}
-                   <Card3D className="border-t-4 border-t-emerald-500">
-                      <h4 className="font-bold text-emerald-700 mb-3 flex items-center gap-2"><ThermometerSun size={18}/> Hot Radar</h4>
-                      {hotLeads.length > 0 ? (
-                        <div className="space-y-3">
-                           {hotLeads.map(l => (
-                              <div key={l.id} className="p-3 bg-emerald-50 rounded-lg border border-emerald-100 cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => setSelectedLead(l)}>
-                                 <p className="font-bold text-sm text-slate-800">{l.clientName}</p>
-                                 <p className="text-xs text-emerald-600 flex justify-between">
-                                    <span>{l.leadStatus}</span>
-                                    <span>{l.followUpDate}</span>
-                                 </p>
-                              </div>
-                           ))}
-                        </div>
-                      ) : <p className="text-sm text-slate-400 italic">No super-hot leads detected.</p>}
-                   </Card3D>
-
-                   {/* COLD STORAGE */}
-                   <Card3D className="border-t-4 border-t-cyan-500">
-                      <h4 className="font-bold text-cyan-700 mb-3 flex items-center gap-2"><Snowflake size={18}/> Cold Storage</h4>
-                      <div className="text-center py-6">
-                         <p className="text-4xl font-black text-slate-300">{coldLeads}</p>
-                         <p className="text-sm text-slate-500 font-bold mt-2">Leads untouched > 5 days</p>
-                         <p className="text-xs text-slate-400 mt-1">Recommendation: Bulk SMS or Re-assign.</p>
-                      </div>
-                   </Card3D>
-
-                   {/* UPCOMING PIPELINE */}
-                   <Card3D className="border-t-4 border-t-indigo-500">
-                      <h4 className="font-bold text-indigo-700 mb-3 flex items-center gap-2"><Calendar size={18}/> Upcoming Pipeline</h4>
-                      <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar pr-2">
-                        {analyticsLogs.filter(l => !l.isCompleted && isBefore(new Date(), parseISO(l.followUpDate))).slice(0, 5).map(l => (
-                           <div key={l.id} className="flex justify-between items-center text-sm border-b border-slate-100 pb-2">
-                              <span className="font-medium text-slate-600">{l.clientName}</span>
-                              <span className="text-xs bg-indigo-50 text-indigo-600 px-2 py-1 rounded font-bold">{l.followUpDate}</span>
-                           </div>
-                        ))}
-                        {analyticsLogs.filter(l => !l.isCompleted && isBefore(new Date(), parseISO(l.followUpDate))).length === 0 && (
-                           <p className="text-sm text-slate-400 italic">Pipeline is empty.</p>
-                        )}
-                      </div>
-                   </Card3D>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                   {logs
+                     .filter(l => l.agentEmail === user.email)
+                     .filter(l => filter === 'today' ? isToday(new Date(l.followUpDate)) : true)
+                     .sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                     .map(log => (
+                       <Card3D key={log.id} onClick={() => setSelectedLead(log)} className="hover:border-indigo-200 group">
+                          <div className="flex justify-between items-start mb-3">
+                             <div className="bg-slate-100 text-slate-600 px-2 py-1 rounded-lg text-xs font-bold uppercase tracking-wide group-hover:bg-indigo-100 group-hover:text-indigo-600 transition-colors">
+                                {log.leadStatus}
+                             </div>
+                             {isToday(new Date(log.followUpDate)) && <div className="text-rose-500 font-bold text-xs flex items-center gap-1"><Clock size={12}/> Today</div>}
+                          </div>
+                          <h3 className="font-bold text-lg text-slate-900 mb-1">{log.clientName}</h3>
+                          <p className="text-slate-500 text-sm mb-4 line-clamp-2">{log.description}</p>
+                          <div className="flex items-center justify-between text-xs font-bold text-slate-400 border-t border-slate-100 pt-3">
+                             <span>{log.phone}</span>
+                             <span>{log.followUpDate}</span>
+                          </div>
+                       </Card3D>
+                   ))}
                 </div>
-
-                {/* ROSTER TABLE (ONLY WHEN VIEWING ALL) */}
-                {selectedAgentEmail === 'ALL' && (
-                  <Card3D>
-                     <h3 className="font-bold text-slate-900 mb-4">Team Roster Stats</h3>
-                     <div className="overflow-x-auto">
-                        <table className="w-full text-sm text-left">
-                           <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200">
-                              <tr>
-                                 <th className="px-4 py-3">Agent</th>
-                                 <th className="px-4 py-3">Role</th>
-                                 <th className="px-4 py-3 text-right">Leads</th>
-                                 <th className="px-4 py-3 text-right">Sales</th>
-                                 <th className="px-4 py-3 text-right">Conv. Rate</th>
-                              </tr>
-                           </thead>
-                           <tbody>
-                              {teamMembers.map(m => {
-                                 const mLogs = logs.filter(l => l.agentEmail === m.email);
-                                 const mSales = mLogs.filter(l => l.leadStatus === LeadStatus.PAID).length;
-                                 const mRate = mLogs.length ? Math.round((mSales / mLogs.length) * 100) : 0;
-                                 
-                                 return (
-                                    <tr key={m.email} className="border-b border-slate-100 hover:bg-slate-50">
-                                       <td className="px-4 py-3 font-bold text-slate-900">{m.name}</td>
-                                       <td className="px-4 py-3 text-slate-500">{m.role}</td>
-                                       <td className="px-4 py-3 text-right font-medium">{mLogs.length}</td>
-                                       <td className="px-4 py-3 text-right font-bold text-emerald-600">{mSales}</td>
-                                       <td className="px-4 py-3 text-right font-bold">{mRate}%</td>
-                                    </tr>
-                                 );
-                              })}
-                           </tbody>
-                        </table>
-                     </div>
-                  </Card3D>
-                )}
              </div>
           )}
 
-          {activeTab === 'market' && (
-             <div className="animate-in fade-in duration-300 space-y-6">
-                <div className="bg-slate-900 rounded-2xl p-6 text-white shadow-3d mb-6 flex justify-between items-center">
-                   <div>
-                     <h2 className="text-2xl font-black flex items-center gap-2"><Globe className="text-emerald-400"/> Indian Market Intel</h2>
-                     <p className="text-slate-400 text-sm">Real-time updates powered by Google Search</p>
+          {/* ANALYTICS VIEW */}
+          {view === 'analytics' && (
+             <div className="flex-1 overflow-y-auto p-6 md:p-10 custom-scrollbar">
+                <h1 className="text-3xl font-black text-slate-900 mb-8">Performance Review</h1>
+                {loadingAnalytics ? <div className="animate-pulse">Analyzing...</div> : analytics ? (
+                   <div className="max-w-4xl space-y-6">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                         <Card3D className="bg-white text-center">
+                            <div className="text-sm font-bold text-slate-400 uppercase tracking-wide mb-2">Health Score</div>
+                            <div className={`text-6xl font-black ${analytics.healthScore > 70 ? 'text-emerald-500' : 'text-amber-500'}`}>{analytics.healthScore}</div>
+                         </Card3D>
+                         <Card3D className="md:col-span-2 bg-slate-900 text-white border-slate-900">
+                             <h3 className="font-bold text-indigo-400 mb-2">AI Manager Feedback</h3>
+                             <p className="text-lg leading-relaxed">{analytics.review}</p>
+                         </Card3D>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                         <Card3D className="bg-emerald-50 border-emerald-200">
+                            <h3 className="font-bold text-emerald-800 mb-4 flex items-center gap-2"><TrendingUp/> Strengths</h3>
+                            <ul className="space-y-2">
+                               {analytics.strengths.map((s, i) => <li key={i} className="text-emerald-700 font-medium flex gap-2"><CheckCircle2 size={16}/> {s}</li>)}
+                            </ul>
+                         </Card3D>
+                         <Card3D className="bg-rose-50 border-rose-200">
+                            <h3 className="font-bold text-rose-800 mb-4 flex items-center gap-2"><AlertTriangle/> Areas to Improve</h3>
+                            <ul className="space-y-2">
+                               {analytics.weaknesses.map((s, i) => <li key={i} className="text-rose-700 font-medium flex gap-2"><Target size={16}/> {s}</li>)}
+                            </ul>
+                         </Card3D>
+                      </div>
                    </div>
-                   {loadingMarket && <div className="animate-spin text-emerald-400"><RefreshCw/></div>}
-                </div>
+                ) : <div className="text-center p-10 text-slate-400">No data available.</div>}
+             </div>
+          )}
 
-                {loadingMarket && !marketIntel ? (
-                   <div className="text-center py-20 text-slate-400 font-bold">Scanning BSE/NSE Data...</div>
-                ) : (
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {/* TODAY */}
-                      <Card3D className="bg-white border-l-8 border-l-rose-500">
-                         <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Zap className="text-rose-500"/> Today's Headlines</h3>
-                         <ul className="space-y-3">
-                            {marketIntel?.today?.map((item, i) => (
-                               <li key={i} className="text-sm border-b border-slate-100 pb-2 last:border-0">
-                                  {item}
-                                  <button className="block text-xs font-bold text-indigo-600 mt-1 hover:underline" onClick={() => getMarketDeepDive(item).then(alert)}>Explain for Client</button>
+          {/* MARKET INTEL VIEW */}
+          {view === 'market' && (
+             <div className="flex-1 overflow-y-auto p-6 md:p-10 custom-scrollbar">
+                <h1 className="text-3xl font-black text-slate-900 mb-8 flex items-center gap-3"><Globe className="text-indigo-600"/> Market Intelligence</h1>
+                {loadingMarket ? <div className="text-xl font-bold text-slate-400 animate-pulse">Scanning Global Markets...</div> : marketData ? (
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl">
+                      <Card3D className="bg-indigo-600 text-white border-indigo-800">
+                         <h3 className="font-bold text-indigo-200 mb-4 uppercase tracking-wide">Today's Headlines</h3>
+                         <ul className="space-y-4">
+                            {marketData.today.map((n,i) => (
+                               <li key={i} className="flex gap-3 items-start">
+                                  <span className="bg-white/20 px-2 rounded text-sm font-bold">{i+1}</span>
+                                  <span className="font-medium leading-tight">{n}</span>
                                </li>
                             ))}
                          </ul>
                       </Card3D>
-
-                      {/* WEEKLY */}
-                      <Card3D className="bg-white border-l-8 border-l-amber-500">
-                         <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Calendar className="text-amber-500"/> This Week</h3>
+                      <Card3D className="bg-white">
+                         <h3 className="font-bold text-slate-400 mb-4 uppercase tracking-wide">Weekly Trends</h3>
                          <ul className="space-y-3">
-                            {marketIntel?.thisWeek?.map((item, i) => (
-                               <li key={i} className="text-sm border-b border-slate-100 pb-2 last:border-0">{item}</li>
-                            ))}
+                            {marketData.thisWeek.map((n,i) => <li key={i} className="text-slate-700 font-medium border-l-4 border-indigo-100 pl-3">{n}</li>)}
                          </ul>
                       </Card3D>
-
-                      {/* MONTHLY */}
-                      <Card3D className="bg-white border-l-8 border-l-indigo-500">
-                         <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><BarChart3 className="text-indigo-500"/> Monthly Macro</h3>
-                         <ul className="space-y-3">
-                            {marketIntel?.thisMonth?.map((item, i) => (
-                               <li key={i} className="text-sm border-b border-slate-100 pb-2 last:border-0">{item}</li>
-                            ))}
-                         </ul>
-                      </Card3D>
-
-                      {/* PREDICTIONS */}
-                      <Card3D className="bg-slate-900 border-slate-950 text-white">
-                         <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><TrendingUp className="text-emerald-400"/> Future Outlook (3-12M)</h3>
-                         <ul className="space-y-3">
-                            {marketIntel?.predictions?.map((item, i) => (
-                               <li key={i} className="text-sm border-b border-slate-800 pb-2 last:border-0 text-slate-300">{item}</li>
-                            ))}
-                         </ul>
+                      <Card3D className="md:col-span-2 bg-slate-900 text-white border-slate-900">
+                         <h3 className="font-bold text-amber-400 mb-4 uppercase tracking-wide flex items-center gap-2"><Sparkles/> Future Predictions</h3>
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {marketData.predictions.map((n,i) => <div key={i} className="bg-white/10 p-4 rounded-xl">{n}</div>)}
+                         </div>
                       </Card3D>
                    </div>
-                )}
+                ) : <div className="text-center p-10 text-slate-400">Market data unavailable. Check API Key.</div>}
              </div>
           )}
-       </main>
-       
-       <SalesCopilot />
 
-       {missedLeadsModalOpen && (
-         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6" onClick={() => setMissedLeadsModalOpen(false)}>
-            <Card3D className="w-full max-w-lg max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-               <div className="flex justify-between items-center mb-4">
-                 <h2 className="text-xl font-bold">Missed Leads</h2>
-                 <button onClick={() => setMissedLeadsModalOpen(false)}><X/></button>
-               </div>
-               <div className="space-y-2">
-                  {missedLeads.map(l => (
-                     <div key={l.id} 
-                          className="p-3 bg-rose-50 rounded border border-rose-100 cursor-pointer hover:bg-rose-100 transition-colors"
-                          onClick={() => { setSelectedLead(l); setMissedLeadsModalOpen(false); }}>
-                        <p className="font-bold">{l.clientName}</p>
-                        <p className="text-xs text-rose-600">Due: {l.followUpDate}</p>
-                     </div>
-                  ))}
-               </div>
-            </Card3D>
-         </div>
-       )}
-
-       {teamModalOpen && (
-         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6" onClick={() => setTeamModalOpen(false)}>
-           <Card3D className="w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-              <div className="flex justify-between items-center mb-6">
-                 <h2 className="text-2xl font-black flex items-center gap-2"><Shield className="text-indigo-600"/> Team Management</h2>
-                 <button onClick={() => setTeamModalOpen(false)}><X/></button>
-              </div>
-
-              <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-xl mb-6">
-                 <h3 className="font-bold text-indigo-900 text-sm mb-2 flex items-center gap-2"><Info size={16}/> How to Invite Agents</h3>
-                 <ol className="text-xs text-indigo-700 list-decimal ml-4 space-y-1 mb-3">
-                    <li>Add their email below to authorize them.</li>
-                    <li>Send them the link to this app.</li>
-                    <li>Tell them to click <b>"First Time Setup"</b> and create their own password.</li>
-                 </ol>
-                 <Button3D variant="secondary" className="w-full text-xs py-2" icon={Copy} onClick={() => {
-                    navigator.clipboard.writeText(`Welcome to the team!\n\n1. Go to: ${window.location.href}\n2. Click "First Time Setup"\n3. Enter your email and create a password.`);
-                    alert("Invite message copied to clipboard!");
-                 }}>Copy Invite Message</Button3D>
-              </div>
-              
-              <div className="bg-slate-50 p-4 rounded-xl border-2 border-slate-100 mb-6">
-                <h3 className="font-bold text-sm mb-3 uppercase text-slate-500">{editingTeamUser ? 'Edit Member' : 'Add New Member'}</h3>
-                <div className="grid grid-cols-2 gap-4">
-                   <Input3D label="Name" value={newMemberName} onChange={e => setNewMemberName(e.target.value)} />
-                   <Input3D label="Email" value={newMemberEmail} onChange={e => setNewMemberEmail(e.target.value)} disabled={!!editingTeamUser} />
+          {/* KNOWLEDGE BASE VIEW */}
+          {view === 'knowledge' && (
+             <div className="flex-1 overflow-y-auto p-6 md:p-10 custom-scrollbar">
+                <div className="flex justify-between items-center mb-8">
+                   <h1 className="text-3xl font-black text-slate-900">Knowledge Base</h1>
+                   {user.role === Role.ADMIN && (
+                     <Button3D onClick={() => { 
+                         if(editingKnowledge && knowledge) saveCompanyKnowledge(knowledge); 
+                         setEditingKnowledge(!editingKnowledge); 
+                     }}>
+                         {editingKnowledge ? 'Save Changes' : 'Edit Knowledge'}
+                     </Button3D>
+                   )}
                 </div>
-                <Select3D label="Role" options={[{label:'Agent', value:Role.AGENT}, {label:'Admin', value:Role.ADMIN}]} value={newMemberRole} onChange={e => setNewMemberRole(e.target.value as any)} />
-                <div className="flex gap-2">
-                   <Button3D onClick={handleAddOrUpdateUser} className="flex-1">{editingTeamUser ? 'Update User' : 'Add Member'}</Button3D>
-                   {editingTeamUser && <Button3D variant="ghost" onClick={() => { setEditingTeamUser(null); setNewMemberEmail(''); setNewMemberName(''); }}>Cancel</Button3D>}
-                </div>
-              </div>
+                
+                {knowledge ? (
+                   <div className="max-w-3xl space-y-6">
+                      <Card3D className="bg-amber-50 border-amber-200">
+                         <div className="flex items-center gap-2 mb-2 text-amber-800 font-bold uppercase text-xs tracking-wider"><BrainCircuit size={14}/> Master Brain</div>
+                         {editingKnowledge ? (
+                            <textarea className="w-full h-64 p-4 rounded-xl border-2 border-amber-300 focus:outline-none" value={knowledge.masterDocumentText} onChange={e => setKnowledge({...knowledge, masterDocumentText: e.target.value})} placeholder="Paste full brochures, pricing PDFs text here..."/>
+                         ) : (
+                            <p className="text-slate-700 whitespace-pre-wrap max-h-64 overflow-y-auto">{knowledge.masterDocumentText || "No master document uploaded."}</p>
+                         )}
+                      </Card3D>
 
-              <div className="space-y-3">
-                 <h3 className="font-bold text-sm text-slate-500 uppercase mb-2">Team Roster ({teamMembers.length})</h3>
-                 {teamMembers.map(m => (
-                    <div key={m.email} className="flex justify-between items-center p-3 bg-white border-2 border-slate-100 rounded-xl">
-                       <div className="flex items-center gap-3">
-                          <img src={m.photoURL} className="w-8 h-8 rounded-full bg-slate-100" />
-                          <div>
-                             <p className="font-bold text-sm">{m.name}</p>
-                             <p className="text-xs text-slate-400">{m.email} • {m.role}</p>
-                          </div>
-                       </div>
-                       <div className="flex gap-2">
-                          <button onClick={() => { setEditingTeamUser(m.uid); setNewMemberEmail(m.email); setNewMemberName(m.name); setNewMemberRole(m.role); }} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 rounded"><Pencil size={16}/></button>
-                          {m.email !== user.email && (
-                             <button onClick={async () => { if(confirm(`Remove ${m.name}?`)) { await deleteUser(m.uid); loadTeam(); } }} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded"><Trash2 size={16}/></button>
-                          )}
-                       </div>
-                    </div>
-                 ))}
-              </div>
-           </Card3D>
-         </div>
-       )}
+                      <div className="grid gap-6">
+                          {['productName', 'pricing', 'uniqueSellingPoints', 'objectionRules'].map((key) => (
+                             <div key={key}>
+                                <label className="block text-sm font-bold text-slate-400 uppercase mb-1">{key.replace(/([A-Z])/g, ' $1')}</label>
+                                {editingKnowledge ? (
+                                    <input className="w-full p-3 border-2 border-slate-200 rounded-xl font-medium" value={(knowledge as any)[key]} onChange={e => setKnowledge({...knowledge, [key]: e.target.value})} />
+                                ) : (
+                                    <div className="p-4 bg-white border-2 border-slate-100 rounded-xl font-medium text-slate-800">{(knowledge as any)[key]}</div>
+                                )}
+                             </div>
+                          ))}
+                      </div>
+                   </div>
+                ) : <div>Loading...</div>}
+             </div>
+          )}
 
-       {knowledgeModalOpen && (
-         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6" onClick={() => setKnowledgeModalOpen(false)}>
-            <Card3D className="w-full max-w-3xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-               <div className="flex justify-between items-center mb-6">
-                 <h2 className="text-2xl font-black flex items-center gap-2"><BrainCircuit className="text-indigo-600"/> AI Brain Configuration</h2>
-                 <button onClick={() => setKnowledgeModalOpen(false)}><X/></button>
-               </div>
-               
-               <div className="mb-8 bg-indigo-50 p-4 rounded-xl border-2 border-indigo-100">
-                  <div className="flex items-center gap-2 mb-2">
-                     <BookOpen className="text-indigo-600" size={20}/>
-                     <h3 className="font-bold text-indigo-900">Master Source Material (NotebookLM Style)</h3>
-                  </div>
-                  <p className="text-xs text-indigo-700 mb-3">
-                     Paste your FULL product brochures, sales scripts, pricing PDFs, and training manuals here. 
-                     The AI will read this entire block to answer questions and handle objections accurately.
-                  </p>
-                  <textarea 
-                    className="w-full h-64 p-4 rounded-xl border-2 border-indigo-200 text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:outline-none resize-y"
-                    placeholder="PASTE EVERYTHING HERE..."
-                    value={knowledge?.masterDocumentText || ''}
-                    onChange={e => setKnowledge(prev => prev ? {...prev, masterDocumentText: e.target.value} : null)}
-                  />
-               </div>
+          {/* ADMIN VIEW */}
+          {view === 'admin' && (
+             <div className="flex-1 overflow-y-auto p-6 md:p-10 custom-scrollbar">
+                <h1 className="text-3xl font-black text-slate-900 mb-8">User Management</h1>
+                <Card3D>
+                   <table className="w-full text-left">
+                      <thead>
+                         <tr className="border-b-2 border-slate-100 text-slate-400 text-sm uppercase tracking-wider">
+                            <th className="pb-3 pl-2">User</th>
+                            <th className="pb-3">Role</th>
+                            <th className="pb-3">Status</th>
+                         </tr>
+                      </thead>
+                      <tbody className="text-slate-700 font-medium">
+                         {allUsers.map(u => (
+                            <tr key={u.email} className="border-b border-slate-50 last:border-0 hover:bg-slate-50">
+                               <td className="py-4 pl-2">
+                                  <div className="font-bold text-slate-900">{u.name}</div>
+                                  <div className="text-xs text-slate-400">{u.email}</div>
+                               </td>
+                               <td className="py-4"><span className="bg-slate-100 px-2 py-1 rounded text-xs font-bold">{u.role}</span></td>
+                               <td className="py-4">{u.uid === 'pending_registration' ? <span className="text-amber-500 font-bold text-xs">Pending</span> : <span className="text-emerald-500 font-bold text-xs">Active</span>}</td>
+                            </tr>
+                         ))}
+                      </tbody>
+                   </table>
+                </Card3D>
+             </div>
+          )}
 
-               <div className="grid grid-cols-2 gap-4">
-                  <Input3D label="Product Name" value={knowledge?.productName || ''} onChange={e => setKnowledge(prev => prev ? {...prev, productName: e.target.value} : null)} />
-                  <Input3D label="Pricing Structure" value={knowledge?.pricing || ''} onChange={e => setKnowledge(prev => prev ? {...prev, pricing: e.target.value} : null)} />
-               </div>
-               <div className="mb-4">
-                  <label className="font-bold text-sm text-slate-700 mb-1 block">Unique Selling Points</label>
-                  <textarea className="w-full border-2 border-slate-300 rounded-xl p-3 h-20" value={knowledge?.uniqueSellingPoints || ''} onChange={e => setKnowledge(prev => prev ? {...prev, uniqueSellingPoints: e.target.value} : null)} />
-               </div>
-               <div className="mb-6">
-                  <label className="font-bold text-sm text-slate-700 mb-1 block">The "Golden Pitch"</label>
-                  <textarea className="w-full border-2 border-slate-300 rounded-xl p-3 h-20" value={knowledge?.salesPitch || ''} onChange={e => setKnowledge(prev => prev ? {...prev, salesPitch: e.target.value} : null)} />
-               </div>
-
-               <Button3D className="w-full" onClick={() => { if(knowledge) { saveCompanyKnowledge(knowledge); setKnowledgeModalOpen(false); } }} icon={Save}>Save Knowledge Base</Button3D>
-            </Card3D>
-         </div>
-       )}
-       
-       {selectedLead && (
-           <LeadDetailsModal 
-               lead={selectedLead} 
-               logs={logs} 
-               onClose={() => setSelectedLead(null)} 
-               onUpdate={handleUpdateLogWrapper} 
-           />
-       )}
-       
-       {profileModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6" onClick={() => setProfileModalOpen(false)}>
-             <Card3D className="w-full max-w-sm text-center" onClick={(e) => e.stopPropagation()}>
-                <h2 className="text-xl font-black mb-4">Edit Profile</h2>
-                <div className="w-24 h-24 mx-auto rounded-full overflow-hidden border-4 border-indigo-100 mb-4 relative group cursor-pointer" onClick={() => {
-                    const url = prompt("Enter new Image URL (e.g. from Unsplash or DiceBear):", user.photoURL);
-                    if(url) updateUserProfile(user.uid, { photoURL: url }).then(u => { if(u) setUser(u); });
-                }}>
-                   <img src={user.photoURL} className="w-full h-full object-cover" />
-                   <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white font-bold text-xs">Change</div>
-                </div>
-                <Input3D label="Name" value={user.name} onChange={e => updateUserProfile(user.uid, { name: e.target.value }).then(u => { if(u) setUser(u); })} />
-                <Button3D className="w-full mt-4" onClick={() => setProfileModalOpen(false)}>Close</Button3D>
-             </Card3D>
-          </div>
-       )}
-
+          <SalesCopilot />
+          {selectedLead && <LeadDetailsModal lead={selectedLead} logs={logs} onClose={() => setSelectedLead(null)} onUpdate={handleUpdateLog} />}
+          {isAddModalOpen && <AddLeadModal onClose={() => setIsAddModalOpen(false)} onSave={refreshLogs} />}
+       </div>
     </div>
   );
-}
+};
+
+export default App;
