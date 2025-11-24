@@ -226,35 +226,6 @@ export const chatWithSalesAssistant = async (message: string): Promise<string> =
   }
 };
 
-export const chatWithLeadStrategyAssistant = async (
-  message: string, 
-  logs: InteractionLog[], 
-  clientName: string
-): Promise<string> => {
-  const client = getAI();
-  if (!client) return "AI Not Configured.";
-
-  try {
-    const historyText = logs.map(h => `[${h.followUpDate}] ${h.leadStatus}: ${h.description}`).join('\n');
-    const response = await client.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: `${getSystemContext()}
-      
-      Context: Conversing about lead "${clientName}".
-      Lead History:
-      ${historyText}
-      
-      Agent Query: "${message}"
-      
-      Task: Act as a 'Wingman' or Sales Coach. Reply as if sending a WhatsApp to a friend. 
-      Keep it very short (under 40 words), tactical, and specific to this lead's history.`
-    });
-    return response.text?.trim() || "Can't advise right now.";
-  } catch (e) {
-    return "Connection error.";
-  }
-};
-
 export interface CallStrategy {
   situationSummary: string;
   talkingPoints: string[];
