@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   LayoutDashboard, Users, Search, PlusCircle, LogOut, Phone, Megaphone, Calendar, CheckCircle2,
@@ -6,7 +5,7 @@ import {
   AlertTriangle, FileWarning, ClipboardList, Settings, Camera, Pencil, Info, Shield, UserPlus,
   Percent, Activity, Sparkles, Bot, Medal, MessageSquare, Mail, Copy, Columns, List, Gauge,
   Zap, Sword, BrainCircuit, BookOpen, Save, RefreshCw, HelpCircle, LockKeyhole, Send, Minimize2, PhoneMissed,
-  Newspaper, Globe, TrendingDown, ThermometerSun, Snowflake, ArrowRight
+  Newspaper, Globe, TrendingDown, ThermometerSun, Snowflake, ArrowRight, Bell, Shuffle, AlertOctagon
 } from 'lucide-react';
 import { format, isToday, isBefore, differenceInDays, isSameDay, isSameMonth, isSameWeek, addDays, parseISO as dateFnsParseISO } from 'date-fns';
 // @ts-ignore
@@ -16,7 +15,7 @@ import { User, Role, InteractionLog, LeadStatus, CallType, CompanyKnowledge } fr
 import { 
   loginUser, registerUser, logoutUser, getCurrentUser, getLogs, saveLog, 
   updateLogStatus, deleteLog, getAllUsers, updateUserProfile, updateLog, 
-  createUser, deleteUser, adminUpdateUser, getCompanyKnowledge, saveCompanyKnowledge, ensureMasterAdmin, resetUserPassword, registerNewAdmin
+  createUser, deleteUser, adminUpdateUser, getCompanyKnowledge, saveCompanyKnowledge, ensureMasterAdmin, resetUserPassword, registerNewAdmin, checkPhoneExists
 } from './services/storage';
 import { 
   refineNotes, generateDailyBriefing, chatWithSalesAssistant, generateCallStrategy, 
@@ -535,6 +534,7 @@ export default function FollowUpApp() {
   const [notes, setNotes] = useState('');
   const [followUpDate, setFollowUpDate] = useState('');
   const [followUpTime, setFollowUpTime] = useState('');
+  const [existingLeadCheck, setExistingLeadCheck] = useState<InteractionLog | null>(null);
   
   const [selectedLead, setSelectedLead] = useState<InteractionLog | null>(null);
   const [missedLeadsModalOpen, setMissedLeadsModalOpen] = useState(false);
@@ -542,6 +542,10 @@ export default function FollowUpApp() {
   const [knowledgeModalOpen, setKnowledgeModalOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [adminEditId, setAdminEditId] = useState<string | null>(null);
+  const [notificationOpen, setNotificationOpen] = useState(false);
+
+  // Admin Transfer State
+  const [assigneeEmail, setAssigneeEmail] = useState('');
 
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('All');
@@ -587,6 +591,20 @@ export default function FollowUpApp() {
     }
   }, [user, showLeaderboard, logs]);
 
+  // Live Duplicate Check
+  useEffect(() => {
+    const check = async () => {
+       if (phone.replace(/\D/g, '').length > 5 && !adminEditId) {
+          const exists = await checkPhoneExists(phone);
+          setExistingLeadCheck(exists);
+       } else {
+          setExistingLeadCheck(null);
+       }
+    };
+    const timeoutId = setTimeout(check, 800);
+    return () => clearTimeout(timeoutId);
+  }, [phone, adminEditId]);
+
   // Analytics Calculation
   const analyticsLogs = useMemo(() => {
      if (selectedAgentEmail === 'ALL') return logs;
@@ -620,13 +638,27 @@ export default function FollowUpApp() {
 
   const handleSaveLog = async () => {
     if (!phone || !clientName) return alert("Phone and Name required");
+    if (existingLeadCheck && !adminEditId) return alert(`Cannot save. Lead managed by ${existingLeadCheck.agentName}.`);
     
     const requiresFollowUp = [LeadStatus.NEW_PROSPECT, LeadStatus.FOLLOW_UP, LeadStatus.SECOND_VOICE].includes(status);
     if (requiresFollowUp && (!followUpDate || !notes)) return alert("Date and Notes required for follow-ups");
 
+    // Determine payload owner
+    let finalAgentName = user!.name;
+    let finalAgentEmail = user!.email;
+
+    // If Admin is transferring
+    if (adminEditId && user?.role === Role.ADMIN && assigneeEmail) {
+        const assignedUser = teamMembers.find(m => m.email === assigneeEmail);
+        if (assignedUser) {
+            finalAgentName = assignedUser.name;
+            finalAgentEmail = assignedUser.email;
+        }
+    }
+
     const payload = {
-        agentName: user!.name,
-        agentEmail: user!.email,
+        agentName: finalAgentName,
+        agentEmail: finalAgentEmail,
         clientName,
         phone,
         description: notes,
@@ -638,16 +670,20 @@ export default function FollowUpApp() {
         secondVoiceRequested: status === LeadStatus.SECOND_VOICE
     };
 
-    if (adminEditId) {
-        await updateLog(adminEditId, payload);
-        setAdminEditId(null);
-    } else {
-        await saveLog(payload);
-        if (status === LeadStatus.PAID) confetti();
+    try {
+        if (adminEditId) {
+            await updateLog(adminEditId, payload);
+            setAdminEditId(null);
+            setAssigneeEmail('');
+        } else {
+            await saveLog(payload);
+            if (status === LeadStatus.PAID) confetti();
+        }
+        setPhone(''); setClientName(''); setNotes(''); setStatus(LeadStatus.NEW_PROSPECT);
+        fetchLogs();
+    } catch (e: any) {
+        alert(e.message);
     }
-
-    setPhone(''); setClientName(''); setNotes(''); setStatus(LeadStatus.NEW_PROSPECT);
-    fetchLogs();
   };
 
   const handleRefineNotes = async () => {
@@ -725,17 +761,68 @@ export default function FollowUpApp() {
   const todayLogs = logs.filter(l => isToday(parseISO(l.followUpDate)) && !l.isCompleted);
   const missedLeads = logs.filter(l => isBefore(parseISO(l.followUpDate), startOfToday()) && !l.isCompleted);
 
+  // Notifications Array
+  const allNotifications = [
+    ...missedLeads.map(l => ({ type: 'Missed', data: l, priority: 1 })),
+    ...todayLogs.map(l => ({ type: 'Today', data: l, priority: 2 })),
+    ...hotLeads.map(l => ({ type: 'Hot', data: l, priority: 3 }))
+  ].sort((a,b) => a.priority - b.priority);
+
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
-       <header className="bg-slate-900 text-white pt-8 pb-24 px-6 shadow-3d relative overflow-hidden">
+       <header className="bg-slate-900 text-white pt-8 pb-24 px-6 shadow-3d relative">
          <div className="max-w-5xl mx-auto flex justify-between items-center relative z-10">
-           <div className="flex items-center gap-4 cursor-pointer" onClick={() => setProfileModalOpen(true)}>
-              <img src={user.photoURL} className="w-14 h-14 rounded-full border-2 border-indigo-400 bg-slate-800 object-cover" />
-              <div>
-                 <h1 className="text-2xl font-black">Follow Up</h1>
-                 <p className="text-slate-400 text-sm">{user.name} ({user.role})</p>
-              </div>
+           <div className="flex items-center gap-4">
+               {/* NOTIFICATION CENTER (TOP LEFT) */}
+               <div className="relative">
+                  <button 
+                    onClick={() => setNotificationOpen(!notificationOpen)} 
+                    className="p-3 bg-slate-800 rounded-full hover:bg-slate-700 relative"
+                  >
+                     <Bell size={24} className="text-white"/>
+                     {allNotifications.length > 0 && (
+                        <span className="absolute top-0 right-0 w-3 h-3 bg-rose-500 rounded-full border-2 border-slate-900"></span>
+                     )}
+                  </button>
+                  {notificationOpen && (
+                     <div className="absolute top-14 left-0 w-80 bg-white rounded-xl shadow-xl z-50 text-slate-900 overflow-hidden animate-in fade-in slide-in-from-top-2 border-2 border-slate-200">
+                        <div className="p-3 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+                           <h4 className="font-bold text-sm">Notifications</h4>
+                           <span className="text-xs bg-slate-200 px-2 py-1 rounded-full font-bold">{allNotifications.length}</span>
+                        </div>
+                        <div className="max-h-80 overflow-y-auto">
+                           {allNotifications.length === 0 ? (
+                              <p className="p-4 text-center text-sm text-slate-400 font-medium">All caught up! 🎉</p>
+                           ) : (
+                              allNotifications.map((n, i) => (
+                                 <div 
+                                    key={i} 
+                                    onClick={() => { setSelectedLead(n.data); setNotificationOpen(false); }}
+                                    className={`p-3 border-b border-slate-50 hover:bg-slate-50 cursor-pointer flex gap-3 items-start ${n.type === 'Missed' ? 'bg-rose-50/50' : ''}`}
+                                 >
+                                    <div className={`mt-1 w-2 h-2 rounded-full shrink-0 ${n.type === 'Missed' ? 'bg-rose-500' : n.type === 'Hot' ? 'bg-emerald-500' : 'bg-indigo-500'}`}></div>
+                                    <div>
+                                       <p className="font-bold text-sm">{n.data.clientName}</p>
+                                       <p className="text-xs text-slate-500">{n.type === 'Missed' ? `Missed: ${n.data.followUpDate}` : n.type === 'Hot' ? 'Hot Lead Detected' : 'Task for Today'}</p>
+                                    </div>
+                                 </div>
+                              ))
+                           )}
+                        </div>
+                     </div>
+                  )}
+               </div>
+
+               {/* PROFILE */}
+               <div className="flex items-center gap-4 cursor-pointer" onClick={() => setProfileModalOpen(true)}>
+                  <img src={user.photoURL} className="w-14 h-14 rounded-full border-2 border-indigo-400 bg-slate-800 object-cover" />
+                  <div>
+                     <h1 className="text-2xl font-black">Follow Up</h1>
+                     <p className="text-slate-400 text-sm">{user.name} ({user.role})</p>
+                  </div>
+               </div>
            </div>
+           
            <div className="flex gap-2">
               {missedLeads.length > 0 && <Button3D variant="danger" icon={FileWarning} onClick={() => setMissedLeadsModalOpen(true)}>{missedLeads.length}</Button3D>}
               {user.role === Role.ADMIN && (
@@ -794,6 +881,39 @@ export default function FollowUpApp() {
 
                <Card3D className="border-t-8 border-t-emerald-500">
                   <h2 className="text-xl font-black text-slate-900 mb-4 flex items-center gap-2"><PlusCircle className="text-emerald-600"/> Lead Entry {adminEditId && <span className="text-xs bg-amber-100 text-amber-600 px-2 py-1 rounded">EDIT MODE</span>}</h2>
+                  
+                  {/* LIVE PHONE CHECK WARNING */}
+                  {existingLeadCheck && !adminEditId && (
+                     <div className="mb-4 bg-rose-50 border-l-4 border-rose-500 p-3 rounded-r-xl animate-in slide-in-from-left-2">
+                        <div className="flex items-center gap-2 text-rose-800 font-bold">
+                           <AlertOctagon size={20}/>
+                           Duplicate Lead Detected!
+                        </div>
+                        <p className="text-sm text-rose-700 mt-1">
+                           This phone number is already managed by <span className="font-black underline">{existingLeadCheck.agentName}</span>.
+                        </p>
+                        <p className="text-xs text-rose-600 mt-1">Please contact Admin to transfer.</p>
+                     </div>
+                  )}
+
+                  {/* ADMIN LEAD TRANSFER DROPDOWN (Only visible in edit mode for admin) */}
+                  {user.role === Role.ADMIN && adminEditId && (
+                    <div className="mb-4 bg-indigo-50 p-3 rounded-xl border border-indigo-200">
+                         <div className="flex items-center gap-2 mb-2">
+                             <Shuffle size={16} className="text-indigo-600"/>
+                             <label className="text-sm font-bold text-indigo-900">Transfer/Assign Agent</label>
+                         </div>
+                         <select 
+                            className="w-full p-2 rounded-lg border border-indigo-300 font-bold text-sm"
+                            value={assigneeEmail}
+                            onChange={(e) => setAssigneeEmail(e.target.value)}
+                         >
+                            <option value="">-- Keep Current Owner --</option>
+                            {teamMembers.map(m => <option key={m.email} value={m.email}>{m.name} ({m.email})</option>)}
+                         </select>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-2 gap-4 mb-4">
                      <Input3D label="Phone" value={phone} onChange={e => setPhone(e.target.value)} />
                      <Input3D label="Name" value={clientName} onChange={e => setClientName(e.target.value)} />
@@ -812,7 +932,9 @@ export default function FollowUpApp() {
                        <Input3D type="time" label="Time" value={followUpTime} onChange={e => setFollowUpTime(e.target.value)} className="mb-0" />
                     </div>
                   )}
-                  <Button3D className="w-full" onClick={handleSaveLog}>{adminEditId ? "Update Lead" : "Save Lead"}</Button3D>
+                  <Button3D className="w-full" onClick={handleSaveLog} disabled={!!existingLeadCheck && !adminEditId}>
+                    {adminEditId ? "Update Lead" : existingLeadCheck ? "Duplicate Locked" : "Save Lead"}
+                  </Button3D>
                </Card3D>
             </div>
           )}
@@ -1119,7 +1241,9 @@ export default function FollowUpApp() {
                </div>
                <div className="space-y-2">
                   {missedLeads.map(l => (
-                     <div key={l.id} className="p-3 bg-rose-50 rounded border border-rose-100">
+                     <div key={l.id} 
+                          className="p-3 bg-rose-50 rounded border border-rose-100 cursor-pointer hover:bg-rose-100 transition-colors"
+                          onClick={() => { setSelectedLead(l); setMissedLeadsModalOpen(false); }}>
                         <p className="font-bold">{l.clientName}</p>
                         <p className="text-xs text-rose-600">Due: {l.followUpDate}</p>
                      </div>
