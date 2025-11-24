@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   LayoutDashboard, Users, Search, PlusCircle, LogOut, Phone, Megaphone, Calendar, CheckCircle2,
@@ -5,9 +6,9 @@ import {
   AlertTriangle, FileWarning, ClipboardList, Settings, Camera, Pencil, Info, Shield, UserPlus,
   Percent, Activity, Sparkles, Bot, Medal, MessageSquare, Mail, Copy, Columns, List, Gauge,
   Zap, Sword, BrainCircuit, BookOpen, Save, RefreshCw, HelpCircle, LockKeyhole, Send, Minimize2, PhoneMissed,
-  Newspaper, Globe, TrendingDown
+  Newspaper, Globe, TrendingDown, ThermometerSun, Snowflake, ArrowRight
 } from 'lucide-react';
-import { format, isToday, isBefore, differenceInDays, isSameDay, isSameMonth, isSameWeek } from 'date-fns';
+import { format, isToday, isBefore, differenceInDays, isSameDay, isSameMonth, isSameWeek, addDays, parseISO as dateFnsParseISO } from 'date-fns';
 // @ts-ignore
 import confetti from 'canvas-confetti';
 
@@ -554,6 +555,7 @@ export default function FollowUpApp() {
   const [knowledge, setKnowledge] = useState<CompanyKnowledge | null>(null);
   
   // Analytics & Market States
+  const [selectedAgentEmail, setSelectedAgentEmail] = useState('ALL');
   const [analysis, setAnalysis] = useState<PerformanceAnalysis | null>(null);
   const [marketIntel, setMarketIntel] = useState<MarketIntel | null>(null);
   const [loadingMarket, setLoadingMarket] = useState(false);
@@ -582,11 +584,27 @@ export default function FollowUpApp() {
        const today = logs.filter(l => l.followUpDate === format(new Date(), 'yyyy-MM-dd') && !l.isCompleted).length;
        const missed = logs.filter(l => isBefore(parseISO(l.followUpDate), startOfToday()) && !l.isCompleted).length;
        generateDailyBriefing(user.name, today, missed).then(setDailyBriefing);
-       
-       // Load Performance Analysis
-       generatePerformanceAnalysis(logs, user.name).then(setAnalysis);
     }
   }, [user, showLeaderboard, logs]);
+
+  // Analytics Calculation
+  const analyticsLogs = useMemo(() => {
+     if (selectedAgentEmail === 'ALL') return logs;
+     return logs.filter(l => l.agentEmail.toLowerCase() === selectedAgentEmail.toLowerCase());
+  }, [logs, selectedAgentEmail]);
+  
+  useEffect(() => {
+    if (activeTab === 'analytics' && analyticsLogs.length > 0) {
+       let agentName = "Global Team";
+       if (selectedAgentEmail !== 'ALL') {
+          const u = teamMembers.find(m => m.email.toLowerCase() === selectedAgentEmail.toLowerCase());
+          if (u) agentName = u.name;
+       } else if (user?.role !== Role.ADMIN) {
+          agentName = user?.name || 'You';
+       }
+       generatePerformanceAnalysis(analyticsLogs, agentName).then(setAnalysis);
+    }
+  }, [activeTab, analyticsLogs, selectedAgentEmail]);
 
   const handleLoadMarket = async () => {
     if (marketIntel) return;
@@ -644,8 +662,9 @@ export default function FollowUpApp() {
   };
 
   useEffect(() => {
-    if (teamModalOpen) loadTeam();
-  }, [teamModalOpen]);
+    // Admin needs team list for dropdown in analytics even if modal closed
+    if (user?.role === Role.ADMIN) loadTeam();
+  }, [user]);
 
   const handleAddOrUpdateUser = async () => {
       if (!newMemberEmail || !newMemberName) return;
@@ -676,6 +695,24 @@ export default function FollowUpApp() {
     await updateLogStatus(id, updates);
     fetchLogs();
   };
+
+  // Hot Leads Logic
+  const hotLeads = useMemo(() => {
+     return analyticsLogs.filter(l => 
+        (l.leadStatus === LeadStatus.SECOND_VOICE || l.leadStatus === LeadStatus.FOLLOW_UP) &&
+        !l.isCompleted &&
+        differenceInDays(parseISO(l.followUpDate), new Date()) <= 3 &&
+        differenceInDays(parseISO(l.followUpDate), new Date()) >= -1
+     ).slice(0, 5);
+  }, [analyticsLogs]);
+
+  // Cold Leads Logic
+  const coldLeads = useMemo(() => {
+     return analyticsLogs.filter(l => 
+        l.leadStatus === LeadStatus.NEW_PROSPECT &&
+        differenceInDays(new Date(), new Date(l.createdAt)) > 5
+     ).length;
+  }, [analyticsLogs]);
 
   if (!user) return <AuthScreen onLogin={setUser} />;
   if (showLeaderboard) return <LeaderboardScreen onComplete={() => setShowLeaderboard(false)} />;
@@ -812,9 +849,28 @@ export default function FollowUpApp() {
 
           {activeTab === 'analytics' && (
              <div className="animate-in fade-in duration-300">
-                {/* DARK MODE DASHBOARD */}
-                <Card3D className="bg-slate-900 border-slate-950 text-white mb-6 p-8">
-                  <div className="flex flex-col md:flex-row gap-8 items-center">
+                
+                {/* ADMIN INSPECTOR DROPDOWN */}
+                {user.role === Role.ADMIN && (
+                  <div className="mb-6 flex justify-between items-center bg-white p-4 rounded-xl border-2 border-slate-200 shadow-sm">
+                     <div className="flex items-center gap-2">
+                        <Shield className="text-indigo-600"/>
+                        <span className="font-bold text-slate-700">Inspector Mode:</span>
+                     </div>
+                     <select 
+                       className="bg-slate-100 border-2 border-slate-200 text-slate-900 font-bold px-4 py-2 rounded-lg focus:outline-none focus:border-indigo-500"
+                       value={selectedAgentEmail}
+                       onChange={e => setSelectedAgentEmail(e.target.value)}
+                     >
+                        <option value="ALL">Global Team Overview</option>
+                        {teamMembers.map(m => <option key={m.email} value={m.email}>{m.name}</option>)}
+                     </select>
+                  </div>
+                )}
+
+                {/* DASHBOARD */}
+                <Card3D className="bg-slate-900 border-slate-950 text-white mb-6 p-8 relative overflow-hidden">
+                  <div className="flex flex-col md:flex-row gap-8 items-center relative z-10">
                      {/* HEALTH GAUGE */}
                      <div className="relative w-40 h-24 flex items-end justify-center shrink-0">
                         <div className="absolute w-40 h-20 bg-slate-800 rounded-t-full top-0 overflow-hidden">
@@ -824,13 +880,16 @@ export default function FollowUpApp() {
                         <div className="absolute w-32 h-16 bg-slate-900 rounded-t-full bottom-0 flex items-end justify-center pb-2">
                            <span className="text-3xl font-black">{analysis?.healthScore || 0}</span>
                         </div>
-                        <p className="absolute -bottom-8 text-xs font-bold text-slate-400 uppercase">Agent Health</p>
+                        <p className="absolute -bottom-8 text-xs font-bold text-slate-400 uppercase">Health Score</p>
                      </div>
 
                      {/* AI COACH TEXT */}
                      <div className="flex-1">
-                        <h3 className="flex items-center gap-2 font-bold text-indigo-400 mb-2"><Bot size={16}/> Performance Coach</h3>
-                        <p className="text-slate-300 text-sm leading-relaxed italic">"{analysis?.review || 'Gathering data...'}"</p>
+                        <h3 className="flex items-center gap-2 font-bold text-indigo-400 mb-2">
+                            <Bot size={16}/> 
+                            {selectedAgentEmail === 'ALL' ? 'Team Performance Coach' : 'Agent Performance Review'}
+                        </h3>
+                        <p className="text-slate-300 text-sm leading-relaxed italic">"{analysis?.review || 'Analyzing workflow data...'}"</p>
                         
                         <div className="flex gap-4 mt-4">
                            <div className="text-xs">
@@ -847,24 +906,24 @@ export default function FollowUpApp() {
                 </Card3D>
 
                 {/* FUNNEL & METRICS */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                    <Card3D className="bg-white">
                       <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2"><Filter size={18}/> Conversion Funnel</h3>
                       <div className="space-y-2">
                          <div className="bg-slate-100 p-3 rounded-lg flex justify-between items-center relative overflow-hidden">
                             <div className="absolute left-0 top-0 h-full bg-slate-200" style={{width: '100%'}}></div>
                             <span className="relative z-10 font-bold text-sm text-slate-600">Total Leads</span>
-                            <span className="relative z-10 font-black">{logs.length}</span>
+                            <span className="relative z-10 font-black">{analyticsLogs.length}</span>
                          </div>
                          <div className="bg-slate-100 p-3 rounded-lg flex justify-between items-center relative overflow-hidden mx-4">
-                            <div className="absolute left-0 top-0 h-full bg-indigo-200" style={{width: `${(logs.filter(l => l.leadStatus !== LeadStatus.NEW_PROSPECT).length / (logs.length || 1)) * 100}%`}}></div>
+                            <div className="absolute left-0 top-0 h-full bg-indigo-200" style={{width: `${(analyticsLogs.filter(l => l.leadStatus !== LeadStatus.NEW_PROSPECT).length / (analyticsLogs.length || 1)) * 100}%`}}></div>
                             <span className="relative z-10 font-bold text-sm text-indigo-800">Engaged</span>
-                            <span className="relative z-10 font-black text-indigo-900">{logs.filter(l => l.leadStatus !== LeadStatus.NEW_PROSPECT).length}</span>
+                            <span className="relative z-10 font-black text-indigo-900">{analyticsLogs.filter(l => l.leadStatus !== LeadStatus.NEW_PROSPECT).length}</span>
                          </div>
                          <div className="bg-slate-100 p-3 rounded-lg flex justify-between items-center relative overflow-hidden mx-8">
-                            <div className="absolute left-0 top-0 h-full bg-emerald-300" style={{width: `${(logs.filter(l => l.leadStatus === LeadStatus.PAID).length / (logs.length || 1)) * 100}%`}}></div>
+                            <div className="absolute left-0 top-0 h-full bg-emerald-300" style={{width: `${(analyticsLogs.filter(l => l.leadStatus === LeadStatus.PAID).length / (analyticsLogs.length || 1)) * 100}%`}}></div>
                             <span className="relative z-10 font-bold text-sm text-emerald-800">PAID</span>
-                            <span className="relative z-10 font-black text-emerald-900">{logs.filter(l => l.leadStatus === LeadStatus.PAID).length}</span>
+                            <span className="relative z-10 font-black text-emerald-900">{analyticsLogs.filter(l => l.leadStatus === LeadStatus.PAID).length}</span>
                          </div>
                       </div>
                    </Card3D>
@@ -874,27 +933,116 @@ export default function FollowUpApp() {
                       <Card3D className="bg-emerald-50 border-emerald-200 p-3 flex flex-col justify-center">
                          <p className="text-xs font-bold text-emerald-600 uppercase">Conversion Rate</p>
                          <p className="text-2xl font-black text-emerald-800">
-                           {logs.length > 0 ? Math.round((logs.filter(l => l.leadStatus === LeadStatus.PAID).length / logs.length) * 100) : 0}%
+                           {analyticsLogs.length > 0 ? Math.round((analyticsLogs.filter(l => l.leadStatus === LeadStatus.PAID).length / analyticsLogs.length) * 100) : 0}%
                          </p>
                       </Card3D>
                       <Card3D className="bg-indigo-50 border-indigo-200 p-3 flex flex-col justify-center">
                          <p className="text-xs font-bold text-indigo-600 uppercase">Pipeline Vol</p>
                          <p className="text-2xl font-black text-indigo-800">
-                           {logs.filter(l => [LeadStatus.NEW_PROSPECT, LeadStatus.FOLLOW_UP, LeadStatus.SECOND_VOICE].includes(l.leadStatus)).length}
+                           {analyticsLogs.filter(l => [LeadStatus.NEW_PROSPECT, LeadStatus.FOLLOW_UP, LeadStatus.SECOND_VOICE].includes(l.leadStatus)).length}
                          </p>
                       </Card3D>
                       <Card3D className="bg-rose-50 border-rose-200 p-3 flex flex-col justify-center">
                          <p className="text-xs font-bold text-rose-600 uppercase">Lost Opp.</p>
                          <p className="text-2xl font-black text-rose-800">
-                           {logs.length > 0 ? Math.round((logs.filter(l => l.leadStatus === LeadStatus.NOT_INTERESTED).length / logs.length) * 100) : 0}%
+                           {analyticsLogs.length > 0 ? Math.round((analyticsLogs.filter(l => l.leadStatus === LeadStatus.NOT_INTERESTED).length / analyticsLogs.length) * 100) : 0}%
                          </p>
                       </Card3D>
                        <Card3D className="bg-amber-50 border-amber-200 p-3 flex flex-col justify-center">
-                         <p className="text-xs font-bold text-amber-600 uppercase">Missed Tasks</p>
-                         <p className="text-2xl font-black text-amber-800">{missedLeads.length}</p>
+                         <p className="text-xs font-bold text-amber-600 uppercase">Money on Table</p>
+                         <p className="text-2xl font-black text-amber-800">
+                            {analyticsLogs.filter(l => l.leadStatus === LeadStatus.NEW_PROSPECT && differenceInDays(new Date(), new Date(l.createdAt)) > 3).length}
+                            <span className="text-xs font-medium text-amber-600 ml-1">stalled</span>
+                         </p>
                       </Card3D>
                    </div>
                 </div>
+
+                {/* AGENT DEEP DIVE SECTION */}
+                <h3 className="text-xl font-black text-slate-900 mb-4 flex items-center gap-2"><ArrowRight/> Workflow Deep Dive</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                   
+                   {/* HOT LEADS RADAR */}
+                   <Card3D className="border-t-4 border-t-emerald-500">
+                      <h4 className="font-bold text-emerald-700 mb-3 flex items-center gap-2"><ThermometerSun size={18}/> Hot Radar</h4>
+                      {hotLeads.length > 0 ? (
+                        <div className="space-y-3">
+                           {hotLeads.map(l => (
+                              <div key={l.id} className="p-3 bg-emerald-50 rounded-lg border border-emerald-100 cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => setSelectedLead(l)}>
+                                 <p className="font-bold text-sm text-slate-800">{l.clientName}</p>
+                                 <p className="text-xs text-emerald-600 flex justify-between">
+                                    <span>{l.leadStatus}</span>
+                                    <span>{l.followUpDate}</span>
+                                 </p>
+                              </div>
+                           ))}
+                        </div>
+                      ) : <p className="text-sm text-slate-400 italic">No super-hot leads detected.</p>}
+                   </Card3D>
+
+                   {/* COLD STORAGE */}
+                   <Card3D className="border-t-4 border-t-cyan-500">
+                      <h4 className="font-bold text-cyan-700 mb-3 flex items-center gap-2"><Snowflake size={18}/> Cold Storage</h4>
+                      <div className="text-center py-6">
+                         <p className="text-4xl font-black text-slate-300">{coldLeads}</p>
+                         <p className="text-sm text-slate-500 font-bold mt-2">Leads untouched > 5 days</p>
+                         <p className="text-xs text-slate-400 mt-1">Recommendation: Bulk SMS or Re-assign.</p>
+                      </div>
+                   </Card3D>
+
+                   {/* UPCOMING PIPELINE */}
+                   <Card3D className="border-t-4 border-t-indigo-500">
+                      <h4 className="font-bold text-indigo-700 mb-3 flex items-center gap-2"><Calendar size={18}/> Upcoming Pipeline</h4>
+                      <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar pr-2">
+                        {analyticsLogs.filter(l => !l.isCompleted && isBefore(new Date(), parseISO(l.followUpDate))).slice(0, 5).map(l => (
+                           <div key={l.id} className="flex justify-between items-center text-sm border-b border-slate-100 pb-2">
+                              <span className="font-medium text-slate-600">{l.clientName}</span>
+                              <span className="text-xs bg-indigo-50 text-indigo-600 px-2 py-1 rounded font-bold">{l.followUpDate}</span>
+                           </div>
+                        ))}
+                        {analyticsLogs.filter(l => !l.isCompleted && isBefore(new Date(), parseISO(l.followUpDate))).length === 0 && (
+                           <p className="text-sm text-slate-400 italic">Pipeline is empty.</p>
+                        )}
+                      </div>
+                   </Card3D>
+                </div>
+
+                {/* ROSTER TABLE (ONLY WHEN VIEWING ALL) */}
+                {selectedAgentEmail === 'ALL' && (
+                  <Card3D>
+                     <h3 className="font-bold text-slate-900 mb-4">Team Roster Stats</h3>
+                     <div className="overflow-x-auto">
+                        <table className="w-full text-sm text-left">
+                           <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200">
+                              <tr>
+                                 <th className="px-4 py-3">Agent</th>
+                                 <th className="px-4 py-3">Role</th>
+                                 <th className="px-4 py-3 text-right">Leads</th>
+                                 <th className="px-4 py-3 text-right">Sales</th>
+                                 <th className="px-4 py-3 text-right">Conv. Rate</th>
+                              </tr>
+                           </thead>
+                           <tbody>
+                              {teamMembers.map(m => {
+                                 const mLogs = logs.filter(l => l.agentEmail === m.email);
+                                 const mSales = mLogs.filter(l => l.leadStatus === LeadStatus.PAID).length;
+                                 const mRate = mLogs.length ? Math.round((mSales / mLogs.length) * 100) : 0;
+                                 
+                                 return (
+                                    <tr key={m.email} className="border-b border-slate-100 hover:bg-slate-50">
+                                       <td className="px-4 py-3 font-bold text-slate-900">{m.name}</td>
+                                       <td className="px-4 py-3 text-slate-500">{m.role}</td>
+                                       <td className="px-4 py-3 text-right font-medium">{mLogs.length}</td>
+                                       <td className="px-4 py-3 text-right font-bold text-emerald-600">{mSales}</td>
+                                       <td className="px-4 py-3 text-right font-bold">{mRate}%</td>
+                                    </tr>
+                                 );
+                              })}
+                           </tbody>
+                        </table>
+                     </div>
+                  </Card3D>
+                )}
              </div>
           )}
 
